@@ -248,13 +248,46 @@ def test_malformed_json_is_rejected(monkeypatch, text):
         model.decide({})
 
 
-def test_malformed_tool_is_rejected(monkeypatch):
+def test_malformed_tool_falls_back_to_validated_json(monkeypatch):
     model, _, _ = gateway(
-        monkeypatch, [tool_response("Decision", {"action": {"kind": "execute"}})],
+        monkeypatch, [tool_response("Decision", {"action": {"kind": "execute"}}),
+                      response(decision_json())],
         capability_fixture("tools", tools=True),
     )
-    with pytest.raises(ModelError, match="invalid tool arguments"):
+    assert model.decide({}).action.kind == "read"
+    assert model.capabilities.selected_output == "json_text"
+    assert model.usage.llm_calls == 2
+
+
+@pytest.mark.parametrize("mode", ["tools", "json_schema"])
+@pytest.mark.parametrize("status", [400, 404, 422, 501])
+def test_real_research_schema_rejection_falls_back_once(monkeypatch, mode, status):
+    capability = capability_fixture(mode, tools=mode == "tools", structured=mode == "json_schema")
+    model, client, _ = gateway(monkeypatch, [
+        ProviderError("SECRET relay body", status), response(decision_json()),
+    ], capability)
+    assert model.decide({}).action.kind == "read"
+    assert model.capabilities.selected_output == "json_text"
+    assert "SECRET" not in model.capabilities.model_dump_json()
+    assert len(client.invocations) == model.usage.llm_calls == 2
+
+
+def test_runtime_fallback_preserves_call_budget(monkeypatch):
+    model, client, _ = gateway(monkeypatch, [
+        tool_response("Decision", {"action": {"kind": "execute"}}),
+    ], capability_fixture("tools", tools=True), Budget(max_llm_calls=1))
+    with pytest.raises(BudgetExceeded, match="call budget"):
         model.decide({})
+    assert len(client.invocations) == model.usage.llm_calls == 1
+
+
+def test_runtime_fallback_still_rejects_unsafe_json_action(monkeypatch):
+    model, client, _ = gateway(monkeypatch, [
+        response("No tool call"), response('{"action":{"kind":"execute"},"rationale":"bad"}'),
+    ], capability_fixture("tools", tools=True))
+    with pytest.raises(ModelError, match="invalid JSON"):
+        model.decide({})
+    assert len(client.invocations) == 2
 
 
 def test_tool_decision_validated(monkeypatch):

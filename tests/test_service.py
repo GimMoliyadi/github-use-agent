@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -330,6 +331,99 @@ def test_service_full_langgraph_run_with_mocked_github_and_mock_model(tmp_path, 
         assert result["usage"]["llm_calls"] == 0
         assert service._checkpoint_exists(task["id"])
         assert TaskStore(tmp_path).get(task["id"])["report_markdown"] == result["report_markdown"]
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("output_mode", ["auto", "json_text"])
+@pytest.mark.parametrize("invalid_worker_response", [False, True])
+def test_live_adapter_probe_then_full_langgraph_research(
+    tmp_path, offline_repository, monkeypatch, output_mode, invalid_worker_response,
+):
+    """Real SDK inside the worker/graph, both external services intercepted."""
+    from langchain_openai import ChatOpenAI
+
+    from repo_research.provider_settings import ModelConfiguration
+
+    calls = []
+
+    def relay(http_request):
+        body = json.loads(http_request.content)
+        calls.append(body)
+        if invalid_worker_response and len(calls) > 3:
+            return httpx.Response(200, text="<html>fixture wrong endpoint</html>")
+        name = ""
+        if body.get("tools"):
+            name = body["tools"][0]["function"]["name"]
+        elif body.get("response_format"):
+            name = body["response_format"]["json_schema"]["name"]
+        context = None
+        for message in body["messages"]:
+            try:
+                value = json.loads(message["content"])
+            except (ValueError, TypeError):
+                continue
+            if isinstance(value, dict) and "repository_context" in value:
+                context = value["repository_context"]
+        if context is None:
+            value = {"echo": "capability-ok"} if name else "capability-ok"
+        elif name == "ReportDraft" or body["messages"][1]["content"].find(
+            'Write an evidence-grounded research report'
+        ) >= 0:
+            evidence = context["evidence"][0]
+            value = {"title": "Fixture tools", "claims": [{
+                "section": "工具入口", "category": "fact",
+                "text": "core.py defines invoke(tool, state).",
+                "evidence_ids": [evidence["id"]],
+            }]}
+        else:
+            action = {"kind": "finish"} if context["files"] else {
+                "kind": "read", "path": "core.py",
+            }
+            value = {"action": action, "rationale": "Inspect the source tool entry"}
+        message = {"role": "assistant", "content": value if isinstance(value, str)
+                   else json.dumps(value)}
+        if body.get("tools"):
+            message = {"role": "assistant", "content": None, "tool_calls": [{
+                "id": "fixture-call", "type": "function", "function": {
+                    "name": name, "arguments": json.dumps(value),
+                },
+            }]}
+        return httpx.Response(200, json={
+            "id": "fixture-completion", "object": "chat.completion", "created": 1,
+            "model": "fixture-model", "choices": [{
+                "index": 0, "message": message,
+                "finish_reason": "tool_calls" if body.get("tools") else "stop",
+            }], "usage": {"prompt_tokens": 7, "completion_tokens": 4, "total_tokens": 11},
+        })
+
+    def adapter(**kwargs):
+        return ChatOpenAI(**kwargs, http_client=httpx.Client(transport=httpx.MockTransport(relay)))
+
+    monkeypatch.setattr("repo_research.llm.ChatOpenAI", adapter)
+    factory, commit = offline_repository
+    service = ResearchService(Settings(_env_file=None, data_dir=tmp_path), client_factory=factory())
+    configuration = ModelConfiguration(
+        mode="live", base_url="https://fixture-relay.example/v1", api_key="offline-key",
+        model="fixture-model", output_mode=output_mode,
+    )
+    try:
+        assert service.probe_model(configuration)["capabilities"]["chat"]
+        service.configure_model(configuration)
+        task = service.start(request(ref=commit))
+        result = wait_terminal(service, task["id"])
+        if invalid_worker_response:
+            assert result["status"] == "interrupted" and result["failed_node"] == "decide"
+            assert "stage=chat" in result["error"] and "type=" in result["error"]
+            assert "fixture wrong endpoint" not in result["error"]
+            assert result["usage"]["llm_calls"] == 1
+            assert len(calls) == 4
+            return
+        assert result["status"] == "completed", result["error"]
+        assert result["usage"]["llm_calls"] == 6
+        assert len(calls) == 9  # Three separate UI-probe calls, six task calls.
+        assert result["evidence"][0]["verified"]
+        assert result["report"] and result["report_markdown"]
     finally:
         service.close()
 

@@ -1,5 +1,25 @@
 # Progress
 
+## 2026-10-10 — task-versus-probe diagnostics and runtime compatibility
+
+- User task ebf0d2b0 fails before research: capabilities untested, three
+  manual attempts reserve 3 x 947 tokens and have no source reads. Its public
+  settings fingerprint matches api.xrapi.uk/v1, grok-4.7, auto (zero prices).
+  The relay root cause remains unconfirmed; credentials are unavailable.
+- Persist safe exception class, request stage and available HTTP status in
+  ModelError text, so task progress and CLI retain diagnostics, not only Web
+  probe responses. Never include raw provider bodies or exception messages.
+- Runtime tool/schema rejection or invalid parsed result gets one strict JSON
+  text fallback with unchanged provider and accounted budgets. Authentication,
+  outage, transport and budget failures remain recoverable interruptions.
+- Added actual ChatOpenAI/OpenAI SDK inside the real LangGraph/service worker:
+  UI probe then read/finish/report passes in auto and JSON text modes with
+  verified fixture evidence. Invalid HTML worker response also reproduces
+  probe-success/task-failure and retains safe diagnostics. All HTTP is mocked.
+- Local offline **264 passed, 8 deselected**, Ruff passed. Actual Chromium
+  responsive settings/research **4 passed, 43 deselected**. No paid API calls.
+- This patch hosted CI is pending; preserve prior run results as historical.
+
 ## 2026-10-10 — avoid false chat-probe failures
 
 - User screenshot showed chat failed after one call; optional feature checks

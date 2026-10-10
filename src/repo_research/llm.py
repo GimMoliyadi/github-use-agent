@@ -233,9 +233,13 @@ class ModelGateway:
                     raise _UnsupportedFeature(feature) from None
                 if _retryable(exc) and attempt < self.settings.llm_max_retries:
                     continue
+                status = getattr(exc, "status_code", None)
+                diagnostic = f"stage={feature}, type={type(exc).__name__}"
+                if isinstance(status, int):
+                    diagnostic += f", HTTP {status}"
                 raise ModelError(
-                    f"LLM request failed: {_error_name(exc)}.",
-                    http_status=getattr(exc, "status_code", None), stage=feature,
+                    f"LLM request failed: {_error_name(exc)} ({diagnostic}).",
+                    http_status=status, stage=feature,
                     code=_error_name(exc),
                 ) from None
             raw = response.get("raw") if isinstance(response, dict) else response
@@ -400,19 +404,33 @@ class ModelGateway:
                     "json_schema",
                 )
                 return self._structured(result, schema)
-        except _UnsupportedFeature:
-            if mode == "tools":
-                self.capabilities.tool_calling = False
-            else:
-                self.capabilities.structured_output = False
-            self.capabilities.selected_output = self._select_output()
-            self.capabilities.details.append(
-                f"Runtime {mode} unsupported; using validated JSON text."
-            )
+        except (_UnsupportedFeature, _InvalidOutput):
+            self._use_json_fallback(mode)
+        except ModelError as error:
+            # A small echo schema can pass while the actual research schema is
+            # rejected. Try JSON text once, but never hide auth/outage/budget errors.
+            if error.http_status not in {400, 404, 422, 501}:
+                raise
+            self._use_json_fallback(mode)
+        messages.append(HumanMessage(
+            content="Return exactly one valid JSON object matching required_schema. "
+            "Do not return Markdown, commentary or a tool call."
+        ))
         result = self._invoke(
             lambda cap: self._client.bind(max_tokens=cap), messages, schema, limit
         )
         return _validate_json(result, schema)
+
+    def _use_json_fallback(self, mode: str) -> None:
+        """Persist the actually selected mode; every fallback call uses the same budget."""
+        if mode == "tools":
+            self.capabilities.tool_calling = False
+        else:
+            self.capabilities.structured_output = False
+        self.capabilities.selected_output = "json_text"
+        self.capabilities.details.append(
+            f"Runtime {mode} rejected or returned invalid output; using validated JSON text."
+        )
 
     def decide(self, context: dict) -> Decision:
         return self._generate(context, Decision, "Choose the next read-only research action")
