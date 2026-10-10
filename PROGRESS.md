@@ -1,5 +1,23 @@
 # Progress
 
+## 2026-10-10 — Web model configuration shipped
+
+- Added top-bar “模型配置”: Base URL, password-masked API key, model ID,
+  Mock/live mode, output compatibility, capability probe and save/apply.
+- Server-only atomic `DATA_DIR/model-settings.json` persistence with `0600`
+  permissions. Keys are absent from API responses, validation errors, task
+  history and browser storage. Git/Docker ignore secret files even in custom
+  data directories. Existing keys cannot be reused at changed endpoints.
+- New settings apply without restart to future tasks. Active workers block
+  changes; saved task fingerprints and budgets remain enforced. Explicit CLI
+  mode and forced-Mock validation bypass persisted UI settings.
+- Current offline suite: **233 passed, 8 deselected**, Ruff passed. Actual
+  Chromium configuration/probe/save/reload flows at 1440 and 390 px plus existing
+  research UI flows: **4 passed, 31 deselected**. Capability requests used the
+  actual ChatOpenAI/OpenAI SDK with MockTransport, not a real paid provider.
+- Screenshots: `docs/screenshots/model-settings-1440.png` and
+  `model-settings-390.png`. Real relay validation still requires user credentials.
+
 ## 2026-10-10 — current acceptance status: runnable and tested
 
 The dependency/network block recorded below has been resolved. `uv.lock` locks

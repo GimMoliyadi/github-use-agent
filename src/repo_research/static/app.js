@@ -59,6 +59,38 @@ async function api(path, options = {}) {
 }
 async function jsonApi(path, options) { return (await api(path, options)).json(); }
 
+async function openModelSettings() {
+  const config = await jsonApi("/api/model");
+  $("model-mode").value = config.mode === "mock" && !config.key_configured ? "live" : config.mode;
+  $("model-base-url").value = config.base_url || "";
+  $("model-name").value = config.model || "";
+  $("model-output-mode").value = config.output_mode || "auto";
+  $("model-api-key").value = "";
+  $("model-key-status").textContent = config.key_configured ? "已保存密钥。保持留空可继续使用；更换 Base URL 时必须填写新密钥。" : "尚未配置密钥。";
+  $("model-result").hidden = true;
+  $("model-panel").hidden = false;
+  $("model-base-url").focus();
+}
+async function applyModelSettings(probe) {
+  const save = $("model-save"), check = $("model-probe"), result = $("model-result");
+  save.disabled = true; check.disabled = true;
+  result.hidden = false; result.className = "notice"; result.textContent = probe ? "正在检测聊天、工具调用和结构化输出…" : "正在保存配置…";
+  const configuration = { mode: $("model-mode").value, base_url: $("model-base-url").value.trim(), api_key: $("model-api-key").value, model: $("model-name").value.trim(), output_mode: $("model-output-mode").value };
+  try {
+    const response = await jsonApi(probe ? "/api/model/probe" : "/api/model", { method: probe ? "POST" : "PUT", body: JSON.stringify(configuration) });
+    if (probe) {
+      const capability = response.capabilities;
+      result.textContent = capability.mode === "mock" ? "Mock 模式：未调用真实模型 API。" : `聊天：${capability.chat ? "通过" : "失败"}；工具调用：${capability.tool_calling ? "支持" : "不支持"}；JSON Schema：${capability.structured_output ? "支持" : "不支持"}。采用 ${capability.selected_output || "未选择"}。本次模型调用 ${response.usage.llm_calls} 次。检测不会自动保存，确认后点击保存并应用。`;
+    } else {
+      $("model-api-key").value = "";
+      await connect();
+      $("model-key-status").textContent = response.key_configured ? "密钥已保存；留空可继续使用。" : "未配置密钥。";
+      result.textContent = "已保存并应用。新研究将使用此配置，重启服务后仍保留。";
+    }
+  } catch (error) { result.className = "notice error"; result.textContent = error.message; }
+  finally { save.disabled = false; check.disabled = false; }
+}
+
 function renderBudgetFields(defaults) {
   clear($("budget-fields"));
   budgetFields.forEach(([key, label, min, max, step]) => {
@@ -207,6 +239,10 @@ $("refresh-history").addEventListener("click", () => loadHistory().catch((error)
 $("pause-button").addEventListener("click", () => taskAction("pause")); $("resume-button").addEventListener("click", () => taskAction("resume"));
 $("download-button").addEventListener("click", async () => { try { const response = await api(`/api/tasks/${encodeURIComponent(state.selected)}/report`); const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = element("a"); link.href = url; link.download = "repolens-report.md"; document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (error) { notice(error.message, true); } });
 $("access-toggle").addEventListener("click", () => { $("auth-panel").hidden = !$("auth-panel").hidden; if (!$("auth-panel").hidden) $("access-token").focus(); });
+$("model-toggle").addEventListener("click", () => openModelSettings().catch((error) => notice(error.message, true)));
+$("model-close").addEventListener("click", () => { $("model-panel").hidden = true; $("model-api-key").value = ""; });
+$("model-form").addEventListener("submit", (event) => { event.preventDefault(); applyModelSettings(false); });
+$("model-probe").addEventListener("click", () => applyModelSettings(true));
 $("auth-form").addEventListener("submit", async (event) => { event.preventDefault(); const candidate = $("access-token").value.trim(); state.token = candidate; try { await connect(); sessionStorage.setItem("repolens.access", candidate); $("access-token").value = ""; } catch (error) { sessionStorage.removeItem("repolens.access"); state.token = ""; notice(error.message, true); } });
 $("clear-token").addEventListener("click", () => { state.token = ""; sessionStorage.removeItem("repolens.access"); $("access-token").value = ""; $("start-button").disabled = true; resetTaskView(); clear($("history")); connect().catch((error) => notice(error.message, true)); });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && state.selected && !state.pollTimer) openTask(state.selected).catch((error) => notice(error.message, true)); });

@@ -14,6 +14,13 @@ from typing import Any
 from .config import Settings
 from .github import parse_repo_url
 from .models import Budget, ResearchRequest
+from .provider_settings import (
+    ModelConfiguration,
+    candidate_settings,
+    load_model_settings,
+    public_model_settings,
+    save_model_settings,
+)
 from .storage import TaskStore
 
 logger = logging.getLogger(__name__)
@@ -55,7 +62,7 @@ class ResearchService:
     ) -> None:
         if not 1 <= max_workers <= 4:
             raise ValueError("Use between one and four research workers.")
-        self.settings = settings
+        self.settings = load_model_settings(settings)
         self.store = TaskStore(settings.data_dir)
         self._owner_lock = (self.store.data_dir / "service.lock").open("a")
         try:
@@ -70,6 +77,38 @@ class ResearchService:
         self._lock = threading.RLock()
         self._jobs: dict[str, tuple[threading.Event, Future]] = {}
         self._closed = False
+
+    def model_configuration(self) -> dict:
+        with self._lock:
+            return public_model_settings(self.settings)
+
+    def configure_model(self, configuration: ModelConfiguration) -> dict:
+        with self._lock:
+            if self._closed or self._jobs:
+                raise ValueError("请先暂停或完成正在运行的研究，再修改模型配置。")
+            selected = candidate_settings(self.settings, configuration)
+            save_model_settings(selected)
+            self.settings = selected
+            return public_model_settings(selected)
+
+    def probe_model(self, configuration: ModelConfiguration) -> dict:
+        from .llm import make_model
+        from .models import Usage
+
+        with self._lock:
+            selected = candidate_settings(self.settings, configuration)
+        # Probe has its own small budget and never changes running task settings.
+        usage = Usage()
+        model = make_model(
+            selected,
+            Budget(max_llm_calls=3 * (selected.llm_max_retries + 1), max_tokens=12000),
+            usage,
+        )
+        try:
+            return {"capabilities": model.probe().model_dump(), "usage": usage.model_dump()}
+        finally:
+            if hasattr(model, "close"):
+                model.close()
 
     def _check_capacity(self) -> None:
         if self._closed:

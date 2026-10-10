@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     github_timeout: float = Field(default=20, ge=1, le=90)
     data_dir: Path = Path("data")
     app_access_token: SecretStr = SecretStr("")
+    load_saved_model: bool = True
 
     @model_validator(mode="after")
     def live_configuration(self):

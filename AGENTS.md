@@ -9,6 +9,11 @@
 - `storage.py`, `service.py`: SQLite task metadata, LangGraph checkpoints, worker recovery and progress.
 - `usage-ledger.sqlite3` inside DATA_DIR: synchronous request reservations and durable initial Commit pin; preserve it with checkpoints and task metadata. Model gateway `.on_usage` and GitHub client `.on_request` are called before HTTP; keep that ordering.
 - `web.py`, `static/`: FastAPI endpoints and responsive UI.
+- `provider_settings.py`: UI model configuration, atomic server-only `0600` persistence.
+  `DATA_DIR/model-settings.json` contains credentials: never expose or commit it.
+  Saved settings override environment model values; explicit CLI `--mode` disables
+  loading saved values. `load_saved_model=False` is required for forced-Mock demos.
+  Keep active-worker configuration immutable and never reuse keys at a changed URL.
 
 ## Commands
 
@@ -62,7 +67,10 @@ them as report evidence.
 Read `PROGRESS.md` and `docs/validation.md`, inspect git status, then run frozen
 offline checks. Dependencies, true LangGraph/SQLite recovery, actual GitHub,
 responsive Chromium and non-root Docker have run; historical install blockers
-are resolved. The final offline suite is 219 passed, 6 deselected. Fresh live
+are resolved. The initial release offline suite was 219 passed, 6 deselected;
+the Web model-settings update passes 233 offline tests with 8 deselected, and
+four actual browser tests pass (configuration and research flows at two widths).
+Fresh live
 CLI/UI records after evidence refinement are archived in `docs/validation/`:
 sampleproject 4/4 citations and itsdangerous 9. The final Docker non-root HTTP and
 actual GitHub research smoke also passed; see `docs/validation/docker-validation.json`.

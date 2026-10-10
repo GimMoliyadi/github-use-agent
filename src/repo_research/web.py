@@ -11,12 +11,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query
-from fastapi.responses import FileResponse, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from .config import Settings
 from .models import Budget, ResearchRequest
+from .provider_settings import ModelConfiguration, public_model_settings
 
 if TYPE_CHECKING:
     from .service import ResearchService
@@ -52,6 +54,14 @@ def create_app(
     app = FastAPI(title="RepoLens", version="0.1.0", lifespan=lifespan)
     app.state.research_service = research_service
 
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(_request, exception):
+        # Validation responses must never echo API keys, even when another field fails.
+        return JSONResponse(status_code=422, content={"detail": [
+            {"loc": list(item["loc"]), "msg": item["msg"], "type": item["type"]}
+            for item in exception.errors()
+        ]})
+
     async def authorize(authorization: str | None = Header(default=None)) -> None:
         if not access_token:
             return
@@ -80,7 +90,10 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from None
         except Exception as exc:
             from .github import GitHubError
+            from .llm import ModelError
 
+            if isinstance(exc, ModelError):
+                raise HTTPException(status_code=502, detail=f"模型检测失败：{exc}") from None
             if isinstance(exc, GitHubError):
                 if exc.code in ("invalid_url", "invalid_ref", "invalid_path"):
                     raise HTTPException(status_code=400, detail=str(exc)) from None
@@ -110,12 +123,27 @@ def create_app(
 
     @api.get("/config")
     def config() -> dict[str, Any]:
+        current = getattr(research_service, "settings", settings)
         return {
-            "mode": settings.model_mode,
-            "model": settings.llm_model if settings.model_mode == "live" else "deterministic-mock",
+            "mode": current.model_mode,
+            "model": current.llm_model if current.model_mode == "live" else "deterministic-mock",
             "default_budget": Budget().model_dump(),
             "access_token_required": bool(access_token),
         }
+
+    @api.get("/model")
+    async def model_configuration():
+        if hasattr(research_service, "model_configuration"):
+            return await invoke(research_service.model_configuration)
+        return public_model_settings(settings)
+
+    @api.put("/model")
+    async def configure_model(configuration: ModelConfiguration):
+        return await task_operation(research_service.configure_model, configuration)
+
+    @api.post("/model/probe")
+    async def probe_model(configuration: ModelConfiguration):
+        return await task_operation(research_service.probe_model, configuration)
 
     @api.get("/tasks")
     async def list_tasks(limit: int = Query(default=30, ge=1, le=100)):

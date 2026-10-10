@@ -40,6 +40,14 @@ uv run repo-research resume TASK_ID --output data/resumed-report.md
 
 ## 接入第三方模型中转站
 
+推荐直接在 Web 页顶部点击 **“模型配置”**，填写 Base URL、API 密钥和模型名称，选择“真实模型”。点击“检测连接能力”可验证聊天、工具调用和 JSON Schema，然后点击“保存并应用”。保存后无需重启，新研究立即使用该配置。
+
+密钥不会回显或写入浏览器存储、研究历史；配置保存到服务端 `DATA_DIR/model-settings.json`，权限为 `0600`，重启后自动恢复。该文件包含明文密钥，应随服务器私有数据保护，已被 Git 和 Docker 构建忽略。此界面管理的是当前服务的共享模型配置；公开服务仍需设置 `APP_ACCESS_TOKEN`。有任务运行时先暂停或完成，再修改配置。保留原 Base URL 时密钥留空可复用，修改 Base URL 必须填写新密钥。
+
+![Web 模型配置入口（能力检测使用 MockTransport 验证）](docs/screenshots/model-settings-1440.png)
+
+CLI 和环境变量方式也保留。保存的 Web 配置优先于环境变量中的模型配置；CLI 默认读取它，显式 `--mode mock` 可忽略已保存配置。模型检测按钮会发送少量真实请求，不会自动保存，Mock 模式不访问模型 API。
+
 在本地 `.env` 中配置自己的服务；该文件被 Git 忽略。项目不预设 DeepSeek 官方地址，不自动更换提供商。
 
 ```dotenv

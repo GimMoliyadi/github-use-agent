@@ -39,6 +39,7 @@ def main() -> int:
     # Ignore .env live mode and access tokens; this temporary server binds localhost only.
     settings = Settings(
         _env_file=None, model_mode="mock", app_access_token="", data_dir=args.data_dir,
+        load_saved_model=False,
     )
     service = ResearchService(settings, max_workers=1)
     listener = socket.socket()

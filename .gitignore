@@ -13,4 +13,6 @@ data/
 dist/
 *.egg-info/
 test-results/
+**/model-settings.json
+**/.model-settings-*
 

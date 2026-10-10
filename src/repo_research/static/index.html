@@ -12,7 +12,7 @@
     <header class="topbar">
       <a class="brand" href="/" aria-label="RepoLens 首页"><span class="brand-symbol" aria-hidden="true">⌘</span><span>RepoLens</span></a>
       <span class="topbar-caption">理解代码，从证据开始</span>
-      <div class="topbar-right"><span id="mode-badge" class="badge mode-badge">连接中</span><button id="access-toggle" class="text-button" type="button">访问令牌</button></div>
+      <div class="topbar-right"><span id="mode-badge" class="badge mode-badge">连接中</span><button id="model-toggle" class="text-button" type="button">模型配置</button><button id="access-toggle" class="text-button" type="button">访问令牌</button></div>
     </header>
 
     <main class="layout">
@@ -30,6 +30,21 @@
           <form id="auth-form" class="auth-form"><label for="access-token" class="sr-only">访问令牌</label><input id="access-token" type="password" autocomplete="off" placeholder="访问令牌"><button class="primary-button" type="submit">连接</button><button id="clear-token" class="text-button" type="button">清除</button></form>
         </section>
         <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+        <section id="model-panel" class="card model-panel" hidden aria-labelledby="model-heading">
+          <div class="card-title"><h2 id="model-heading">连接你的模型</h2><button id="model-close" class="text-button" type="button">收起</button></div>
+          <p class="hint">填写 OpenAI-compatible 中转站信息，保存后立即用于新研究，无需编辑 .env 或重启服务。</p>
+          <form id="model-form">
+            <label for="model-mode">推理模式</label><select id="model-mode"><option value="live">真实模型 · 使用我的 API</option><option value="mock">Mock · 不调用模型 API</option></select>
+            <label for="model-base-url">Base URL</label><input id="model-base-url" type="url" maxlength="1000" placeholder="https://your-provider.example/v1" autocomplete="off">
+            <label for="model-api-key">API 密钥</label><input id="model-api-key" type="password" autocomplete="new-password" placeholder="填写中转站 API Key">
+            <div class="form-columns"><div><label for="model-name">模型名称</label><input id="model-name" maxlength="200" placeholder="中转站提供的模型 ID" autocomplete="off"></div><div><label for="model-output-mode">输出兼容模式</label><select id="model-output-mode"><option value="auto">自动检测</option><option value="json_text">JSON 文本 · 通用兼容</option><option value="tools">工具调用</option><option value="json_schema">JSON Schema</option></select></div></div>
+            <p id="model-key-status" class="hint"></p>
+            <div class="model-actions"><button id="model-probe" class="secondary-button" type="button">检测连接能力</button><button id="model-save" class="primary-button" type="submit">保存并应用</button></div>
+            <p class="hint">检测会发送少量真实模型请求。密钥仅保存在服务端数据目录，不会回显或写入研究记录；这是当前服务的共享配置。</p>
+          </form>
+          <p id="model-result" class="notice" role="status" aria-live="polite" hidden></p>
+        </section>
 
         <section id="research-intro" class="research-intro">
           <div class="eyebrow">GITHUB REPOSITORY RESEARCH</div>

@@ -13,6 +13,7 @@ from .config import Settings
 from .github import GitHubError
 from .llm import ModelError, make_model
 from .models import Budget, ResearchRequest, Usage
+from .provider_settings import load_model_settings
 from .service import ResearchService
 from .storage import TaskStore
 
@@ -21,9 +22,10 @@ def _settings(arguments: argparse.Namespace) -> Settings:
     overrides = {}
     if arguments.mode is not None:
         overrides["model_mode"] = arguments.mode
+        overrides["load_saved_model"] = False
     if arguments.data_dir is not None:
         overrides["data_dir"] = arguments.data_dir
-    return Settings(**overrides)
+    return load_model_settings(Settings(**overrides))
 
 
 def _print_json(value) -> None:
