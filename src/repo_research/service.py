@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
+import json
 import logging
+import sqlite3
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
@@ -17,14 +20,27 @@ logger = logging.getLogger(__name__)
 
 
 def budget_for_request(request: ResearchRequest) -> Budget:
-    if request.budget is not None:
-        return request.budget.model_copy(deep=True)
-    if request.depth == "quick":
-        return Budget(max_iterations=6, max_files=8, max_bytes=180_000, max_llm_calls=12)
-    if request.depth == "deep":
-        return Budget(max_iterations=24, max_files=32, max_bytes=800_000, max_llm_calls=32,
-                      max_tokens=160_000, max_api_requests=100)
-    return Budget()
+    from .agent import effective_budget
+
+    return effective_budget(request).model_copy(deep=True)
+
+
+def model_fingerprint(settings: Settings) -> str | None:
+    """Only a digest is persisted; keys are neither persisted nor hashed.
+
+    Even a configured endpoint can embed credentials, so no part of that URL
+    enters the task payload in plaintext. Key rotation remains possible.
+    """
+    if settings.model_mode == "mock":
+        return None
+    configuration = {
+        "mode": settings.model_mode, "model": settings.llm_model,
+        "base_url": settings.llm_base_url, "output_mode": settings.llm_output_mode,
+        "input_price": settings.llm_input_price_per_million,
+        "output_price": settings.llm_output_price_per_million,
+    }
+    encoded = json.dumps(configuration, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 class ResearchService:
@@ -78,7 +94,10 @@ class ResearchService:
         parse_repo_url(request.repo_url)
         with self._lock:
             self._check_capacity()
-            task = self.store.create(request, budget_for_request(request), self.settings.model_mode)
+            task = self.store.create(
+                request, budget_for_request(request), self.settings.model_mode,
+                model_fingerprint=model_fingerprint(self.settings),
+            )
             self._submit(task, resume=False)
         return task
 
@@ -97,12 +116,40 @@ class ResearchService:
                 raise ValueError("Only paused or interrupted tasks can be resumed.")
             if task["model_mode"] != self.settings.model_mode:
                 raise ValueError("Resume requires the task's original model mode.")
+            if self.settings.model_mode == "live" and (
+                task.get("model_fingerprint") != model_fingerprint(self.settings)
+            ):
+                raise ValueError("Resume requires the task's original provider, model and prices.")
+            has_saved_work = bool(
+                task.get("progress") or task.get("repository") or task.get("evidence")
+            ) or any(
+                isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+                for value in task.get("usage", {}).values()
+            )
+            if has_saved_work and not self._checkpoint_exists(task_id):
+                raise ValueError(
+                    "The task checkpoint is missing. Restore its saved data directory; "
+                    "spent budget cannot be reset."
+                )
             self._check_capacity()
             task = self.store.patch(
                 task_id, status="pending", error=None, pause_requested=False, stop_reason=""
             )
             self._submit(task, resume=True)
         return task
+
+    def _checkpoint_exists(self, task_id: str) -> bool:
+        if not self.store.checkpoint_path.exists():
+            return False
+        from langgraph.checkpoint.sqlite import SqliteSaver
+
+        connection = sqlite3.connect(self.store.checkpoint_path, timeout=15)
+        connection.execute("PRAGMA busy_timeout=15000")
+        try:
+            checkpoint = SqliteSaver(connection).get_tuple({"configurable": {"thread_id": task_id}})
+            return checkpoint is not None
+        finally:
+            connection.close()
 
     def pause(self, task_id: str) -> dict[str, Any]:
         with self._lock:

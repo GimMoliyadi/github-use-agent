@@ -11,6 +11,7 @@ import json
 import re
 import time
 from collections import deque
+from collections.abc import Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
@@ -56,7 +57,8 @@ def parse_repo_url(repo_url: str) -> tuple[str, str]:
     except (ValueError, AttributeError):
         raise GitHubError("invalid_url", "Use https://github.com/OWNER/REPOSITORY.") from None
     if (
-        url.scheme != "https" or not valid_host or url.username is not None or url.password is not None
+        url.scheme != "https" or not valid_host
+        or url.username is not None or url.password is not None
         or url.query or url.fragment
     ):
         raise GitHubError(
@@ -116,7 +118,9 @@ class GitHubClient:
         transport: httpx.BaseTransport | None = None,
     ):
         if max_requests < 0 or max_file_bytes < 1:
-            raise ValueError("Request and file budgets must be non-negative and positive respectively")
+            raise ValueError(
+                "Request and file budgets must be non-negative and positive respectively"
+            )
         headers = {
             "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
             "User-Agent": "repo-research-agent/0.1",
@@ -132,6 +136,8 @@ class GitHubClient:
         self.max_file_bytes = max_file_bytes
         self.request_count = 0
         self.cache_hits = 0
+        # Persist counters before each network attempt, including failed/retried ones.
+        self.on_request: Callable[[int, int], None] | None = None
         self._blobs: dict[tuple[str, str, str], tuple[str, int]] = {}
 
     def close(self) -> None:
@@ -152,7 +158,8 @@ class GitHubClient:
                 return max(0, float(header))
             except ValueError:
                 try:
-                    return max(0, (parsedate_to_datetime(header) - datetime.now(UTC)).total_seconds())
+                    seconds = (parsedate_to_datetime(header) - datetime.now(UTC)).total_seconds()
+                    return max(0, seconds)
                 except (TypeError, ValueError, OverflowError):
                     pass
         reset = response.headers.get("x-ratelimit-reset")
@@ -171,11 +178,15 @@ class GitHubClient:
             cached = self._cache.get(cache_key)
             if cached is not None:
                 self.cache_hits += 1
+                if self.on_request is not None:
+                    self.on_request(self.request_count, self.cache_hits)
                 return cached
         for attempt in range(3):
             if self.request_count >= self.max_requests:
                 raise GitHubError("request_budget", "GitHub API request budget exhausted.")
             self.request_count += 1
+            if self.on_request is not None:
+                self.on_request(self.request_count, self.cache_hits)
             try:
                 with self._client.stream("GET", endpoint, params=params) as response:
                     status = response.status_code
@@ -199,15 +210,22 @@ class GitHubClient:
                             retryable=rate_limited, retry_after=self._retry_after(response),
                         )
                     if status == 404:
-                        raise GitHubError("not_found", "GitHub repository, ref or file was not found.")
+                        raise GitHubError(
+                            "not_found",
+                            "GitHub repository, ref or file was not found.",
+                        )
                     if status == 401:
-                        raise GitHubError("unauthorized", "GitHub rejected the configured access token.")
+                        raise GitHubError(
+                            "unauthorized",
+                            "GitHub rejected the configured access token.",
+                        )
                     if 500 <= status <= 599:
                         if attempt < 2:
                             time.sleep(0.1 * (2**attempt))
                             continue
                         raise GitHubError(
-                            "upstream_error", "GitHub API is temporarily unavailable.", retryable=True,
+                            "upstream_error", "GitHub API is temporarily unavailable.",
+                            retryable=True,
                         )
                     if status < 200 or status >= 300:
                         raise GitHubError("http_error", f"GitHub API returned HTTP {status}.")
@@ -216,14 +234,21 @@ class GitHubClient:
                         raw.extend(chunk)
                         if len(raw) > max_response_bytes:
                             raise GitHubError(
-                                "response_too_large", "GitHub response exceeds the safe read budget."
+                                "response_too_large",
+                                "GitHub response exceeds the safe read budget.",
                             )
                     try:
                         result = json.loads(raw)
                     except (ValueError, UnicodeError):
-                        raise GitHubError("invalid_response", "GitHub returned invalid JSON.") from None
+                        raise GitHubError(
+                            "invalid_response",
+                            "GitHub returned invalid JSON.",
+                        ) from None
                     if not isinstance(result, (dict, list)):
-                        raise GitHubError("invalid_response", "GitHub returned an invalid response.")
+                        raise GitHubError(
+                            "invalid_response",
+                            "GitHub returned an invalid response.",
+                        )
                     if cache_key:
                         self._cache.put(cache_key, result)
                     return result
@@ -232,7 +257,8 @@ class GitHubClient:
                     time.sleep(0.1 * (2**attempt))
                     continue
                 raise GitHubError(
-                    "network_error", "Could not reach GitHub API after bounded retries.", retryable=True,
+                    "network_error", "Could not reach GitHub API after bounded retries.",
+                    retryable=True,
                 ) from None
         raise AssertionError("unreachable")
 
@@ -250,7 +276,8 @@ class GitHubClient:
         commit = self._request_json(
             f"{endpoint}/commits/{quote(pinned_ref, safe='')}",
             params={"per_page": "1"},  # Resolve SHA; changed-file pages are not research input.
-            cache_key=f"commit:{owner}/{name}:{ref.lower()}" if ref and SHA_RE.fullmatch(ref) else None,
+            cache_key=(f"commit:{owner}/{name}:{ref.lower()}"
+                       if ref and SHA_RE.fullmatch(ref) else None),
             max_response_bytes=5_000_000,
         )
         try:
@@ -259,7 +286,10 @@ class GitHubClient:
         except (KeyError, TypeError):
             raise GitHubError("invalid_response", "GitHub commit metadata is incomplete.") from None
         if ref and SHA_RE.fullmatch(ref) and commit_sha != ref.lower():
-            raise GitHubError("integrity_error", "GitHub resolved a different commit than requested.")
+            raise GitHubError(
+                "integrity_error",
+                "GitHub resolved a different commit than requested.",
+            )
         return RepositoryInfo(
             owner=owner, name=name, full_name=f"{owner}/{name}",
             url=f"https://github.com/{owner}/{name}",
@@ -280,7 +310,10 @@ class GitHubClient:
             or not isinstance(data.get("truncated"), bool)
             or _sha(data.get("sha")) != sha.lower()
         ):
-            raise GitHubError("invalid_response", "GitHub tree metadata is incomplete or inconsistent.")
+            raise GitHubError(
+                "invalid_response",
+                "GitHub tree metadata is incomplete or inconsistent.",
+            )
         return data
 
     def _entry(self, repo: RepositoryInfo, item: dict, prefix: str = "") -> TreeEntry:
@@ -293,7 +326,10 @@ class GitHubClient:
                 path=path, type=kind, sha=_sha(item["sha"]), size=_size(item.get("size", 0)),
             )
         except (TypeError, KeyError):
-            raise GitHubError("invalid_response", "GitHub tree contains an invalid entry.") from None
+            raise GitHubError(
+                "invalid_response",
+                "GitHub tree contains an invalid entry.",
+            ) from None
         if kind == "blob":
             self._blobs[(repo.full_name, repo.commit_sha, path)] = (entry.sha, entry.size)
         return entry
@@ -322,11 +358,15 @@ class GitHubClient:
                 current = self._tree_data(repo, sha, False)
             except GitHubError as error:
                 # Partial observations remain useful; the report must expose their limitation.
-                warnings.append(f"Hierarchical traversal stopped: {error.code}; listing is incomplete.")
+                warnings.append(
+                    f"Hierarchical traversal stopped: {error.code}; listing is incomplete."
+                )
                 truncated = True
                 break
             if current["truncated"]:
-                warnings.append(f"GitHub truncated directory {prefix or '/'}; listing is incomplete.")
+                warnings.append(
+                    f"GitHub truncated directory {prefix or '/'}; listing is incomplete."
+                )
                 truncated = True
             children = sorted(
                 (self._entry(repo, item, prefix) for item in current["tree"]), key=_priority,
@@ -345,7 +385,9 @@ class GitHubClient:
                     else:
                         pending.append((entry.path + "/", entry.sha))
             if len(collected) >= max_entries and (pending or budget_hit):
-                warnings.append(f"Tree entry budget ({max_entries}) reached; listing is incomplete.")
+                warnings.append(
+                    f"Tree entry budget ({max_entries}) reached; listing is incomplete."
+                )
                 truncated = True
                 break
         if not collected:
@@ -353,8 +395,23 @@ class GitHubClient:
             collected = {entry.path: entry for entry in entries[:max_entries]}
             truncated = True
         return TreeListing(
-            entries=sorted(collected.values(), key=_priority), truncated=truncated, warnings=warnings,
+            entries=sorted(collected.values(), key=_priority),
+            truncated=truncated, warnings=warnings,
         )
+
+    def restore_tree(self, repo: RepositoryInfo, listing: TreeListing) -> None:
+        """Restore the pinned blob index from a durable, possibly partial tree.
+
+        No network calls occur. Missing paths stay missing; a partial tree never
+        authorizes an assumed blob or claims complete repository coverage.
+        """
+        _sha(repo.commit_sha)
+        _sha(repo.tree_sha)
+        for entry in listing.entries:
+            if entry.type == "blob":
+                self._blobs[(repo.full_name, repo.commit_sha, _path(entry.path))] = (
+                    _sha(entry.sha), _size(entry.size),
+                )
 
     def _decode(
         self, data: dict, path: str, expected_sha: str | None = None,
@@ -366,30 +423,52 @@ class GitHubClient:
             raise GitHubError("file_too_large", "File exceeds the configured per-file byte budget.")
         sha = _sha(data.get("sha"))
         if expected_sha and sha != expected_sha:
-            raise GitHubError("integrity_error", "File SHA differs from the pinned repository tree.")
+            raise GitHubError(
+                "integrity_error",
+                "File SHA differs from the pinned repository tree.",
+            )
         if data.get("encoding") != "base64" or not isinstance(data.get("content"), str):
-            raise GitHubError("incomplete_content", "GitHub did not provide complete base64 file content.")
+            raise GitHubError(
+                "incomplete_content",
+                "GitHub did not provide complete base64 file content.",
+            )
         try:
             compact = "".join(data["content"].split())
             if len(compact) > ((limit + 2) // 3) * 4:
-                raise GitHubError("file_too_large", "Encoded file exceeds the per-file byte budget.")
+                raise GitHubError(
+                    "file_too_large",
+                    "Encoded file exceeds the per-file byte budget.",
+                )
             raw = base64.b64decode(compact, validate=True)
         except (binascii.Error, ValueError):
-            raise GitHubError("incomplete_content", "GitHub file content is malformed or incomplete.") from None
+            raise GitHubError(
+                "incomplete_content",
+                "GitHub file content is malformed or incomplete.",
+            ) from None
         if len(raw) != size:
-            raise GitHubError("incomplete_content", "File content length does not match GitHub metadata.")
+            raise GitHubError(
+                "incomplete_content",
+                "File content length does not match GitHub metadata.",
+            )
         actual_sha = hashlib.sha1(f"blob {len(raw)}\0".encode() + raw).hexdigest()
         if actual_sha != sha:
             raise GitHubError("integrity_error", "File content does not match its Git blob SHA.")
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
-            raise GitHubError("binary_file", "File is binary or does not use UTF-8 encoding.") from None
+            raise GitHubError(
+                "binary_file",
+                "File is binary or does not use UTF-8 encoding.",
+            ) from None
         control_count = sum(byte < 32 and byte not in {9, 10, 12, 13} for byte in raw)
         if b"\0" in raw or control_count > max(1, len(raw) // 100):
-            raise GitHubError("binary_file", "Binary/control-byte content is excluded from static reads.")
+            raise GitHubError(
+                "binary_file",
+                "Binary/control-byte content is excluded from static reads.",
+            )
         return SourceFile(
-            path=path, text=text, blob_sha=sha, size=size, total_lines=len(text.splitlines()),
+            path=path, text=text, blob_sha=sha, size=size,
+            total_lines=0 if not text else text.count("\n") + int(not text.endswith("\n")),
         )
 
     def read_file(
@@ -416,7 +495,8 @@ class GitHubClient:
                 # Validate persisted source content, including a lower budget on a later request.
                 result = self._decode(
                     {"size": source.size, "sha": source.blob_sha, "encoding": "base64",
-                     "content": base64.b64encode(source.text.encode("utf-8")).decode("ascii")}, path,
+                     "content": base64.b64encode(source.text.encode("utf-8")).decode("ascii")},
+                    path,
                     expected_sha=known[0] if known else None, max_bytes=limit,
                 )
             except GitHubError as error:
@@ -427,12 +507,17 @@ class GitHubClient:
                 self._cache.delete(cache_key)
             else:
                 self.cache_hits += 1
+                if self.on_request is not None:
+                    self.on_request(self.request_count, self.cache_hits)
                 return result
         response_budget = ((limit + 2) // 3) * 4 + limit // 20 + 8192
         if known:
             sha, size = known
             if size > limit:
-                raise GitHubError("file_too_large", "File exceeds the configured per-file byte budget.")
+                raise GitHubError(
+                    "file_too_large",
+                    "File exceeds the configured per-file byte budget.",
+                )
             data = self._request_json(
                 f"/repos/{repo.owner}/{repo.name}/git/blobs/{sha}",
                 cache_key=f"blob:{repo.full_name}:{sha}", max_response_bytes=response_budget,
@@ -448,7 +533,10 @@ class GitHubClient:
             if not isinstance(data, dict) or data.get("type") != "file":
                 raise GitHubError("unsupported_file", "Path is a directory, symlink or submodule.")
             if data.get("path") != path:
-                raise GitHubError("integrity_error", "GitHub returned content for a different file path.")
+                raise GitHubError(
+                    "integrity_error",
+                    "GitHub returned content for a different file path.",
+                )
             source = self._decode(data, path, max_bytes=limit)
         self._cache.put(cache_key, source.model_dump())
         return source

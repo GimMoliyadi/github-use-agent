@@ -7,6 +7,7 @@ budgets are checkpointed before the recovery interrupt asks for a manual retry.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import threading
 from collections.abc import Callable
@@ -101,29 +102,69 @@ class ResearchRunner:
         self.tools: ResearchTools | None = None
         self.usage = Usage()
         self.budget = Budget()
+        self._journal: sqlite3.Connection | None = None
+        self._task_id = ""
+
+    def _persist_usage(self, usage: Usage | None = None) -> None:
+        if self._journal is None:
+            return
+        if usage is not None:
+            self.usage = usage
+        self.usage.api_requests = self.client.request_count
+        self.usage.cache_hits = self.client.cache_hits
+        self._journal.execute(
+            "INSERT INTO usage_ledger(task_id, data) VALUES (?, ?) "
+            "ON CONFLICT(task_id) DO UPDATE SET data=excluded.data",
+            (self._task_id, self.usage.model_dump_json()),
+        )
+        self._journal.commit()
+
+    def _request_reserved(self, requests: int, hits: int) -> None:
+        self.usage.api_requests = requests
+        self.usage.cache_hits = hits
+        self._persist_usage()
 
     def _restore(self, state: ResearchState) -> None:
         """Rebuild ephemeral adapters from durable data without resetting counters."""
         self.budget = Budget.model_validate(state["budget"])
         self.usage = Usage.model_validate(state["usage"])
+        if self._journal is not None:
+            row = self._journal.execute(
+                "SELECT data FROM usage_ledger WHERE task_id=?", (self._task_id,),
+            ).fetchone()
+            if row:
+                # A request reservation can be newer than the last completed graph node.
+                self.usage = Usage.model_validate_json(row[0])
         self.client.request_count = self.usage.api_requests
         self.client.cache_hits = self.usage.cache_hits
         capability = state.get("capabilities")
-        self.model = self.model_factory(
-            self.settings, self.budget, self.usage,
-            CapabilityReport.model_validate(capability) if capability else None,
-        )
+        if self.model is None:
+            self.model = self.model_factory(
+                self.settings, self.budget, self.usage,
+                CapabilityReport.model_validate(capability) if capability else None,
+            )
+        else:
+            self.model.budget, self.model.usage = self.budget, self.usage
+            if capability:
+                self.model.capabilities = CapabilityReport.model_validate(capability)
+        self.model.on_usage = self._persist_usage
+        self.client.on_request = self._request_reserved
         self.tools = None
         if state.get("repository"):
+            repo = RepositoryInfo.model_validate(state["repository"])
+            tree = TreeListing.model_validate(state["tree"])
+            restore_tree = getattr(self.client, "restore_tree", None)
+            if callable(restore_tree):
+                restore_tree(repo, tree)
             self.tools = ResearchTools(
-                self.client, RepositoryInfo.model_validate(state["repository"]),
-                TreeListing.model_validate(state["tree"]), self.budget, self.usage,
+                self.client, repo, tree, self.budget, self.usage,
                 files=dict(state.get("files", {})), evidence=list(state.get("evidence", [])),
             )
 
     def _account(self) -> dict:
         self.usage.api_requests = self.client.request_count
         self.usage.cache_hits = self.client.cache_hits
+        self._persist_usage()
         result = {"usage": self.usage.model_dump()}
         if self.model is not None:
             result["capabilities"] = self.model.capabilities.model_dump()
@@ -139,7 +180,12 @@ class ResearchRunner:
     def _context(self, state: ResearchState) -> dict:
         """Expose a bounded goal-ranked view, keeping the full ledger in checkpoints."""
         question = state["request"]["question"]
-        terms = question.lower().replace("_", " ").split()
+        terms = re.findall(r"[a-z_][a-z_0-9]{2,}", question.lower())
+        for keyword, related in {"工具": ["tool", "invoke"], "状态": ["state", "graph"],
+                                 "记忆": ["memory", "store"], "入口": ["main", "cli"],
+                                 "架构": ["core", "app"]}.items():
+            if keyword in question:
+                terms.extend(related)
         entries = [e for e in state["tree"]["entries"]
                    if e["type"] == "blob" and eligible_path(e["path"])]
         entries.sort(key=lambda e: (
@@ -159,9 +205,10 @@ class ResearchRunner:
         evidence = []
         size = 0
         for item in reversed(state.get("evidence", [])):
-            size += len(json.dumps(item, ensure_ascii=False).encode())
-            if size > 16_000:
+            item_size = len(json.dumps(item, ensure_ascii=False).encode())
+            if size + item_size > 16_000:
                 continue
+            size += item_size
             evidence.append(item)
         observations = []
         size = 0
@@ -185,9 +232,20 @@ class ResearchRunner:
         }
 
     def _initialize(self, state: ResearchState) -> dict:
-        repo = RepositoryInfo.model_validate(state["repository"]) if state.get("repository") else (
+        pin = self._journal.execute(
+            "SELECT data FROM repo_pins WHERE task_id=?", (self._task_id,),
+        ).fetchone() if self._journal else None
+        repo = (
+            RepositoryInfo.model_validate(state["repository"]) if state.get("repository") else
+            RepositoryInfo.model_validate_json(pin[0]) if pin else
             self.client.resolve(state["request"]["repo_url"], state["request"].get("ref"))
         )
+        if self._journal is not None:
+            self._journal.execute(
+                "INSERT OR IGNORE INTO repo_pins(task_id,data) VALUES (?,?)",
+                (self._task_id, repo.model_dump_json()),
+            )
+            self._journal.commit()
         # If tree fetching fails, pinning is preserved via error wrapper below.
         self._pending_repo = repo.model_dump()
         tree = self.client.tree(repo, max_entries=self.budget.max_tree_entries)
@@ -222,10 +280,14 @@ class ResearchRunner:
 
     def _explore(self, state: ResearchState) -> dict:
         assert self.tools is not None
+        if self.usage.iterations >= self.budget.max_iterations:
+            return self._event(state, "explore", "恢复操作已达到迭代预算。",
+                               stop_reason="iteration_budget")
         action = ToolAction.model_validate(state["decision"]["action"])
         key = json.dumps(action.model_dump(), sort_keys=True)
         before = (len(self.tools.files), len(self.tools.evidence))
         self.usage.iterations += 1
+        self._persist_usage()
         try:
             observation = self.tools.execute(action)
         except ToolError as exc:
@@ -281,15 +343,14 @@ class ResearchRunner:
                            draft=draft.model_dump())
 
     def _verify(self, state: ResearchState) -> dict:
+        draft = ReportDraft.model_validate(state["draft"])
+        draft.limitations = [*state.get("warnings", []), *draft.limitations][:30]
         result = finalize_report(
-            ReportDraft.model_validate(state["draft"]),
+            draft,
             RepositoryInfo.model_validate(state["repository"]) if state.get("repository") else None,
             state["files"], state["evidence"], state["request"]["question"], self.usage,
             state.get("stop_reason", ""), self.settings.model_mode,
         )
-        result["draft"]["limitations"] = [
-            *result["draft"]["limitations"], *state.get("warnings", []),
-        ][:30]
         return self._event(state, "verify", f"校验完成；有效引用 {len(result['evidence'])} 条。",
                            report=result["draft"], report_markdown=result["markdown"],
                            evidence=result["evidence"], status="completed", error=None)
@@ -362,6 +423,20 @@ class ResearchRunner:
         connection = sqlite3.connect(self.checkpoint_path, check_same_thread=False, timeout=30)
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA busy_timeout=30000")
+        self._task_id = task_id
+        self._journal = sqlite3.connect(
+            self.checkpoint_path.parent / "usage-ledger.sqlite3", timeout=30,
+        )
+        self._journal.execute("PRAGMA journal_mode=WAL")
+        self._journal.execute("PRAGMA synchronous=FULL")
+        self._journal.execute("PRAGMA busy_timeout=30000")
+        self._journal.execute(
+            "CREATE TABLE IF NOT EXISTS usage_ledger (task_id TEXT PRIMARY KEY, data TEXT NOT NULL)"
+        )
+        self._journal.execute(
+            "CREATE TABLE IF NOT EXISTS repo_pins (task_id TEXT PRIMARY KEY, data TEXT NOT NULL)"
+        )
+        self._journal.commit()
         saver = SqliteSaver(connection)
         graph = self._build(saver)
         config = {"configurable": {"thread_id": task_id},
@@ -369,12 +444,16 @@ class ResearchRunner:
         try:
             if resume:
                 snapshot = graph.get_state(config)
-                if not snapshot.values or not snapshot.next:
+                if not snapshot.values:
+                    # Queued task may never have reached START before process shutdown.
+                    input_value = initial_state(request, budget)
+                elif not snapshot.next:
                     raise ValueError("No pending LangGraph checkpoint exists for this task.")
-                input_value = Command(resume=True) if snapshot.interrupts else None
+                else:
+                    input_value = Command(resume=True) if snapshot.interrupts else None
             else:
                 input_value = initial_state(request, budget)
-            for state in graph.stream(input_value, config, stream_mode="values"):
+            for state in graph.stream(input_value, config, stream_mode="values", durability="sync"):
                 if on_update:
                     on_update(dict(state))
             snapshot = graph.get_state(config)
@@ -386,9 +465,17 @@ class ResearchRunner:
             return result
         finally:
             connection.close()
+            if self._journal is not None:
+                self._journal.close()
+                self._journal = None
             self.close()
 
     def close(self) -> None:
         if self.client is not None:
             self.client.close()
             self.client = None
+        if self.model is not None:
+            close = getattr(self.model, "close", None)
+            if callable(close):
+                close()
+            self.model = None

@@ -10,7 +10,8 @@ import time
 from pathlib import Path
 
 from .config import Settings
-from .llm import make_model
+from .github import GitHubError
+from .llm import ModelError, make_model
 from .models import Budget, ResearchRequest, Usage
 from .service import ResearchService
 from .storage import TaskStore
@@ -147,8 +148,12 @@ def main(argv: list[str] | None = None) -> int:
             service.close()
     except Exception as exc:
         # Pydantic/provider exceptions can include input values or credentials.
-        # The Web UI has richer safe errors; CLI keeps failures intentionally terse.
-        print(f"Command failed ({type(exc).__name__}).", file=sys.stderr)
+        # Only our explicitly sanitized error classes and exact service
+        # ValueErrors are safe to show. ValidationError is a ValueError subclass.
+        if isinstance(exc, (GitHubError, ModelError)) or type(exc) is ValueError:
+            print(f"Command failed: {exc}", file=sys.stderr)
+        else:
+            print(f"Command failed ({type(exc).__name__}); check configuration.", file=sys.stderr)
         return 1
 
 

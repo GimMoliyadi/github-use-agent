@@ -76,7 +76,8 @@ class TaskStore:
         return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
 
     def create(
-        self, request: ResearchRequest, budget: Budget, model_mode: str
+        self, request: ResearchRequest, budget: Budget, model_mode: str,
+        model_fingerprint: str | None = None,
     ) -> dict[str, Any]:
         if model_mode not in {"mock", "live"}:
             raise ValueError("Unsupported model mode.")
@@ -84,14 +85,16 @@ class TaskStore:
         task = {
             "id": str(uuid4()), "status": "pending", "created_at": now, "updated_at": now,
             "request": request.model_dump(mode="json"), "budget": budget.model_dump(mode="json"),
-            "model_mode": model_mode, "repository": None, "progress": [], "evidence": [],
+            "model_mode": model_mode, "model_fingerprint": model_fingerprint,
+            "repository": None, "progress": [], "evidence": [],
             "usage": {}, "report": None, "report_markdown": "", "error": None,
             "stop_reason": "", "pause_requested": False, "capabilities": None,
             "failed_node": None,
         }
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO tasks(id, created_at, updated_at, status, data) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO tasks(id, created_at, updated_at, status, data) "
+                "VALUES (?, ?, ?, ?, ?)",
                 (task["id"], now, now, task["status"], self._serialize(task)),
             )
         return task

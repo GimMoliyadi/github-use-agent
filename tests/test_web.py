@@ -214,15 +214,29 @@ def test_browser_responsive_task_flow_and_untrusted_content(service, tmp_path, w
             "title": "源码研究报告",
             "summary": injected,
             "claims": [{"section": "关键入口", "category": "fact", "text": injected,
-                        "evidence_ids": ["E1"]}],
+                        "evidence_ids": ["E1", "E2", "E3"]}],
             "limitations": ["这是离线浏览器测试。"],
         },
         report_markdown="# 模拟报告\n" + injected,
-        evidence=[{
-            "id": "E1", "path": "src/main.py", "start_line": 1, "end_line": 1,
-            "url": "javascript:window.xss=2", "excerpt": injected,
-            "commit_sha": "a" * 40, "repository": "example/project", "verified": True,
-        }],
+        evidence=[
+            {
+                "id": "E1", "path": "src/main.py", "start_line": 1, "end_line": 1,
+                "url": "javascript:window.xss=2", "excerpt": injected,
+                "commit_sha": "a" * 40, "repository": "example/project", "verified": True,
+            },
+            {
+                "id": "E2", "path": "src/main.py", "start_line": 2, "end_line": 2,
+                "url": "https://github.com/example/project/blob/" + "a" * 40 + "/src/main.py#L2",
+                "excerpt": "unverified", "commit_sha": "a" * 40,
+                "repository": "example/project", "verified": False,
+            },
+            {
+                "id": "E3", "path": "src/main.py", "start_line": 3, "end_line": 3,
+                "url": "https://github.com/example/project/blob/" + "a" * 40 + "/src/main.py#L3",
+                "excerpt": "verified", "commit_sha": "a" * 40,
+                "repository": "example/project", "verified": True,
+            },
+        ],
     )
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
@@ -240,18 +254,23 @@ def test_browser_responsive_task_flow_and_untrusted_content(service, tmp_path, w
         assert server.started, "Local browser test server did not start"
         assert httpx.get(url + "/health").status_code == 200
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch()
+            browser = playwright.chromium.launch(
+                executable_path=os.environ.get("CHROMIUM_EXECUTABLE_PATH")
+            )
             page = browser.new_page(viewport={"width": width, "height": 1000})
             try:
                 page.goto(url)
                 expect(page.locator("#mode-badge")).to_contain_text("MOCK")
                 page.locator(".history-item").first.click()
                 expect(page.locator("#report-content")).to_contain_text(injected)
+                expect(page.locator("#report-content")).to_contain_text("模型摘要（未逐项验证）")
                 expect(page.locator("#task-status")).to_have_text("已完成")
-                page.locator(".evidence summary").click()
-                expect(page.locator(".evidence pre")).to_have_text(injected)
+                page.locator(".evidence summary").first.click()
+                expect(page.locator(".evidence pre").first).to_have_text(injected)
                 assert page.locator("#report-content img").count() == 0
                 assert page.locator("a[href^='javascript:']").count() == 0
+                assert page.locator(".evidence a").count() == 1
+                assert page.locator(".evidence a").first.get_attribute("href").endswith("#L3")
                 assert page.evaluate("window.xss || 0") == 0
                 assert page.evaluate(
                     "document.documentElement.scrollWidth <= window.innerWidth"

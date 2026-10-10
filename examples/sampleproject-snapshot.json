@@ -1,0 +1,183 @@
+{
+  "source": "GitHub REST API fetched via installed GitHub connector; replay is offline, not direct Python live HTTP",
+  "fetched_at": "2026-10-10",
+  "repo": {
+    "full_name": "pypa/sampleproject",
+    "description": "A sample project that exists for PyPUG's \"Tutorial on Packaging and Distributing Projects\"",
+    "default_branch": "main",
+    "language": "Python",
+    "stargazers_count": 5242
+  },
+  "commit": {
+    "sha": "621e4974ca25ce531773def586ba3ed8e736b3fc",
+    "commit": {
+      "tree": {
+        "sha": "c7d439931f56fa21023a7a0e615b91f5699c1827"
+      }
+    }
+  },
+  "tree": {
+    "sha": "c7d439931f56fa21023a7a0e615b91f5699c1827",
+    "url": "https://api.github.com/repos/pypa/sampleproject/git/trees/c7d439931f56fa21023a7a0e615b91f5699c1827",
+    "tree": [
+      {
+        "path": ".github",
+        "mode": "040000",
+        "type": "tree",
+        "sha": "afb4c437f979c1eded01096eeb78f98f22202db4",
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/trees/afb4c437f979c1eded01096eeb78f98f22202db4"
+      },
+      {
+        "path": ".github/workflows",
+        "mode": "040000",
+        "type": "tree",
+        "sha": "098a9f979460bfbe5c2317ee7937b7f2b0f3d211",
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/trees/098a9f979460bfbe5c2317ee7937b7f2b0f3d211"
+      },
+      {
+        "path": ".github/workflows/release.yml",
+        "mode": "100644",
+        "type": "blob",
+        "sha": "5bde2fcd3182b2dc804f1c15bf7c8abf2ea9836c",
+        "size": 780,
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/blobs/5bde2fcd3182b2dc804f1c15bf7c8abf2ea9836c"
+      },
+      {
+        "path": ".github/workflows/test.yml",
+        "mode": "100644",
+        "type": "blob",
+        "sha": "64d0c4ffa5627c4c8ce4fbdda7bf971790760fed",
+        "size": 761,
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/blobs/64d0c4ffa5627c4c8ce4fbdda7bf971790760fed"
+      },
+      {
+        "path": ".gitignore",
+        "mode": "100644",
+        "type": "blob",
+        "sha": "ddc2bd1192b160b38fb18b68805512014ef738f3",
+        "size": 138,
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/blobs/ddc2bd1192b160b38fb18b68805512014ef738f3"
+      },
+      {
+        "path": "LICENSE.txt",
+        "mode": "100644",
+        "type": "blob",
+        "sha": "c74aceda037b84c08858a7d653a956e65355fa6a",
+        "size": 1081,
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/blobs/c74aceda037b84c08858a7d653a956e65355fa6a"
+      },
+      {
+        "path": "README.md",
+        "mode": "100644",
+        "type": "blob",
+        "sha": "d6c10ebb3006b55da0222d37658dba0788a34b76",
+        "size": 1804,
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/blobs/d6c10ebb3006b55da0222d37658dba0788a34b76"
+      },
+      {
+        "path": "noxfile.py",
+        "mode": "100644",
+        "type": "blob",
+        "sha": "d2ec8f7070d4f6d70b6551683e101422faf086ca",
+        "size": 1463,
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/blobs/d2ec8f7070d4f6d70b6551683e101422faf086ca"
+      },
+      {
+        "path": "pyproject.toml",
+        "mode": "100644",
+        "type": "blob",
+        "sha": "d97bdabb1f6e04b59bf75e1c513ee26eaa00b7f2",
+        "size": 6684,
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/blobs/d97bdabb1f6e04b59bf75e1c513ee26eaa00b7f2"
+      },
+      {
+        "path": "src",
+        "mode": "040000",
+        "type": "tree",
+        "sha": "484e462e792a119dc0c93df3caa3daf1a628675e",
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/trees/484e462e792a119dc0c93df3caa3daf1a628675e"
+      },
+      {
+        "path": "src/sample",
+        "mode": "040000",
+        "type": "tree",
+        "sha": "249087d7c0fc84d0149eea173f90dee41276cbd8",
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/trees/249087d7c0fc84d0149eea173f90dee41276cbd8"
+      },
+      {
+        "path": "src/sample/__init__.py",
+        "mode": "100644",
+        "type": "blob",
+        "sha": "c8f10649946fda329ad70975b0c82629bfcb5859",
+        "size": 111,
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/blobs/c8f10649946fda329ad70975b0c82629bfcb5859"
+      },
+      {
+        "path": "src/sample/package_data.dat",
+        "mode": "100644",
+        "type": "blob",
+        "sha": "7c0646bfd53c1f0ed45ffd81563f30017717ca58",
+        "size": 9,
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/blobs/7c0646bfd53c1f0ed45ffd81563f30017717ca58"
+      },
+      {
+        "path": "src/sample/simple.py",
+        "mode": "100644",
+        "type": "blob",
+        "sha": "c929f885b60a11bfc703f7b358bb2b1dc7d10253",
+        "size": 43,
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/blobs/c929f885b60a11bfc703f7b358bb2b1dc7d10253"
+      },
+      {
+        "path": "tests",
+        "mode": "040000",
+        "type": "tree",
+        "sha": "bc04b738e59f5fb4af774d96ab99c8d77273761a",
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/trees/bc04b738e59f5fb4af774d96ab99c8d77273761a"
+      },
+      {
+        "path": "tests/__init__.py",
+        "mode": "100644",
+        "type": "blob",
+        "sha": "4eef093a5f541b72cba0f895f6872d9f52be98e8",
+        "size": 99,
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/blobs/4eef093a5f541b72cba0f895f6872d9f52be98e8"
+      },
+      {
+        "path": "tests/test_simple.py",
+        "mode": "100644",
+        "type": "blob",
+        "sha": "b7a0ee3a65de8d46c15df764b83505d2f9b6ff4e",
+        "size": 417,
+        "url": "https://api.github.com/repos/pypa/sampleproject/git/blobs/b7a0ee3a65de8d46c15df764b83505d2f9b6ff4e"
+      }
+    ],
+    "truncated": false
+  },
+  "blobs": [
+    {
+      "path": "README.md",
+      "sha": "d6c10ebb3006b55da0222d37658dba0788a34b76",
+      "size": 1804,
+      "text": "# A sample Python project\n\n![Python Logo](https://www.python.org/static/community_logos/python-logo.png \"Sample inline image\")\n\nA sample project that exists as an aid to the [Python Packaging User\nGuide][packaging guide]'s [Tutorial on Packaging and Distributing\nProjects][distribution tutorial].\n\nThis project does not aim to cover best practices for Python project\ndevelopment as a whole. For example, it does not provide guidance or tool\nrecommendations for version control, documentation, or testing.\n\n[The source for this project is available here][src].\n\nThe metadata for a Python project is defined in the `pyproject.toml` file,\nan example of which is included in this project. You should edit this file\naccordingly to adapt this sample project to your needs.\n\n----\n\nThis is the README file for the project.\n\nThe file should use UTF-8 encoding and can be written using\n[reStructuredText][rst] or [markdown][md use] with the appropriate [key set][md\nuse]. It will be used to generate the project webpage on PyPI and will be\ndisplayed as the project homepage on common code-hosting services, and should be\nwritten for that purpose.\n\nTypical contents for this file would include an overview of the project, basic\nusage examples, etc. Generally, including the project changelog in here is not a\ngood idea, although a simple “What's New” section for the most recent version\nmay be appropriate.\n\n[packaging guide]: https://packaging.python.org\n[distribution tutorial]: https://packaging.python.org/tutorials/packaging-projects/\n[src]: https://github.com/pypa/sampleproject\n[rst]: http://docutils.sourceforge.net/rst.html\n[md]: https://tools.ietf.org/html/rfc7764#section-3.5 \"CommonMark variant\"\n[md use]: https://packaging.python.org/specifications/core-metadata/#description-content-type-optional\n"
+    },
+    {
+      "path": "pyproject.toml",
+      "sha": "d97bdabb1f6e04b59bf75e1c513ee26eaa00b7f2",
+      "size": 6684,
+      "text": "# Guide (user-friendly):\n# https://packaging.python.org/en/latest/guides/writing-pyproject-toml/\n\n# Specification (technical, formal):\n# https://packaging.python.org/en/latest/specifications/pyproject-toml/\n\n\n# Choosing a build backend:\n# https://packaging.python.org/en/latest/tutorials/packaging-projects/#choosing-a-build-backend\n[build-system]\n# A list of packages that are needed to build your package:\nrequires = [\"setuptools\"] # REQUIRED if [build-system] table is used\n# The name of the Python object that frontends will use to perform the build:\nbuild-backend = \"setuptools.build_meta\" # If not defined, then legacy behavior can happen.\n\n\n[project]\n# This is the name of your project. The first time you publish this\n# package, this name will be registered for you. It will determine how\n# users can install this project, e.g.:\n#\n# $ pip install sampleproject\n#\n# And where it will live on PyPI: https://pypi.org/project/sampleproject/\n#\n# There are some restrictions on what makes a valid project name\n# specification here:\n# https://packaging.python.org/specifications/core-metadata/#name\nname = \"sampleproject\" # REQUIRED, is the only field that cannot be marked as dynamic.\n\n# Versions should comply with PEP 440:\n# https://www.python.org/dev/peps/pep-0440/\n#\n# For a discussion on single-sourcing the version, see\n# https://packaging.python.org/guides/single-sourcing-package-version/\nversion = \"4.0.0\" # REQUIRED, although can be dynamic\n\n# This is a one-line description or tagline of what your project does. This\n# corresponds to the \"Summary\" metadata field:\n# https://packaging.python.org/specifications/core-metadata/#summary\ndescription = \"A sample Python project\"\n\n# This is an optional longer description of your project that represents\n# the body of text which users will see when they visit PyPI.\n#\n# Often, this is the same as your README, so you can just read it in from\n# that file directly.\n#\n# This field corresponds to the \"Description\" metadata field:\n# https://packaging.python.org/specifications/core-metadata/#description-optional\nreadme = \"README.md\"\n\n# Specify which Python versions you support. In contrast to the\n# 'Programming Language' classifiers in this file, 'pip install' will check this\n# and refuse to install the project if the version does not match. See\n# https://packaging.python.org/guides/distributing-packages-using-setuptools/#python-requires\nrequires-python = \">=3.9\"\n\n# This is either text indicating the license for the distribution, or a file\n# that contains the license.\n# https://packaging.python.org/en/latest/specifications/core-metadata/#license\nlicense = { file = \"LICENSE.txt\" }\n\n# This field adds keywords for your project which will appear on the\n# project page. What does your project relate to?\n#\n# Note that this is a list of additional keywords, separated\n# by commas, to be used to assist searching for the distribution in a\n# larger catalog.\nkeywords = [\"sample\", \"setuptools\", \"development\"]\n\n# This should be your name or the name of the organization who originally\n# authored the project, and a valid email address corresponding to the name\n# listed.\nauthors = [{ name = \"A. Random Developer\", email = \"author@example.com\" }]\n\n# This should be your name or the names of the organization who currently\n# maintains the project, and a valid email address corresponding to the name\n# listed.\nmaintainers = [\n  { name = \"A. Great Maintainer\", email = \"maintainer@example.com\" },\n]\n\n# Classifiers help users find your project by categorizing it.\n#\n# For a list of valid classifiers, see https://pypi.org/classifiers/\nclassifiers = [\n  # How mature is this project? Common values are\n  #   3 - Alpha\n  #   4 - Beta\n  #   5 - Production/Stable\n  \"Development Status :: 3 - Alpha\",\n\n  # Indicate who your project is intended for\n  \"Intended Audience :: Developers\",\n  \"Topic :: Software Development :: Build Tools\",\n\n  # Pick your license as you wish\n  \"License :: OSI Approved :: MIT License\",\n\n  # Specify the Python versions you support here. In particular, ensure\n  # that you indicate you support Python 3. These classifiers are *not*\n  # checked by \"pip install\". See instead \"requires-python\" key in this file.\n  \"Programming Language :: Python :: 3\",\n  \"Programming Language :: Python :: 3.9\",\n  \"Programming Language :: Python :: 3.10\",\n  \"Programming Language :: Python :: 3.11\",\n  \"Programming Language :: Python :: 3.12\",\n  \"Programming Language :: Python :: 3.13\",\n  \"Programming Language :: Python :: 3 :: Only\",\n]\n\n# This field lists other packages that your project depends on to run.\n# Any package you put here will be installed by pip when your project is\n# installed, so they must be valid existing projects.\n#\n# For an analysis of this field vs pip's requirements files see:\n# https://packaging.python.org/discussions/install-requires-vs-requirements/\ndependencies = [\"peppercorn\"]\n\n# List additional groups of dependencies here (e.g. development\n# dependencies). Users will be able to install these using the \"extras\"\n# syntax, for example:\n#\n#   $ pip install sampleproject[dev]\n#\n# Optional dependencies the project provides. These are commonly\n# referred to as \"extras\". For a more extensive definition see:\n# https://packaging.python.org/en/latest/specifications/dependency-specifiers/#extras\n[project.optional-dependencies]\ndev = [\"check-manifest\"]\ntest = [\"coverage\"]\n\n# List URLs that are relevant to your project\n#\n# This field corresponds to the \"Project-URL\" and \"Home-Page\" metadata fields:\n# https://packaging.python.org/specifications/core-metadata/#project-url-multiple-use\n# https://packaging.python.org/specifications/core-metadata/#home-page-optional\n#\n# Examples listed include a pattern for specifying where the package tracks\n# issues, where the source is hosted, where to say thanks to the package\n# maintainers, and where to support the project financially. The key is\n# what's used to render the link text on PyPI.\n[project.urls]\n\"Homepage\" = \"https://github.com/pypa/sampleproject\"\n\"Bug Reports\" = \"https://github.com/pypa/sampleproject/issues\"\n\"Funding\" = \"https://donate.pypi.org\"\n\"Say Thanks!\" = \"http://saythanks.io/to/example\"\n\"Source\" = \"https://github.com/pypa/sampleproject/\"\n\n# The following would provide a command line executable called `sample`\n# which executes the function `main` from this package when invoked.\n[project.scripts]\nsample = \"sample:main\"\n\n\n# This is configuration specific to the `setuptools` build backend.\n# If you are using a different build backend, you will need to change this.\n[tool.setuptools]\n# If there are data files included in your packages that need to be\n# installed, specify them here.\npackage-data = { \"sample\" = [\"*.dat\"] }\n"
+    },
+    {
+      "path": "src/sample/__init__.py",
+      "sha": "c8f10649946fda329ad70975b0c82629bfcb5859",
+      "size": 111,
+      "text": "def main():\n    \"\"\"Entry point for the application script\"\"\"\n    print(\"Call your main application code here\")\n"
+    },
+    {
+      "path": "src/sample/simple.py",
+      "sha": "c929f885b60a11bfc703f7b358bb2b1dc7d10253",
+      "size": 43,
+      "text": "def add_one(number):\n    return number + 1\n"
+    }
+  ]
+}

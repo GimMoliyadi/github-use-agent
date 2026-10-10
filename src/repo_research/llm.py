@@ -150,6 +150,7 @@ class ModelGateway:
         capability: CapabilityReport | None = None,
     ) -> None:
         self.settings, self.budget, self.usage = settings, budget, usage
+        self.on_usage: Callable[[Usage], None] | None = None
         self.capabilities = capability or CapabilityReport(mode="live")
         self._priced = (
             settings.llm_input_price_per_million > 0
@@ -209,6 +210,8 @@ class ModelGateway:
             self.usage.llm_calls += 1
             self.usage.reserved_tokens += reservation
             self.usage.cost_usd += reserved_cost
+            if self.on_usage is not None:
+                self.on_usage(self.usage)
             try:
                 response = factory().bind(max_tokens=outputs).invoke(messages)
             except Exception as exc:
@@ -232,6 +235,8 @@ class ModelGateway:
                 self.usage.input_tokens += input_count
                 self.usage.output_tokens += output_count
                 self.usage.cost_usd += self._price(input_count, output_count) - reserved_cost
+            if self.on_usage is not None:
+                self.on_usage(self.usage)
             if (
                 self.usage.input_tokens + self.usage.output_tokens + self.usage.reserved_tokens
                 > self.budget.max_tokens
@@ -369,6 +374,11 @@ class ModelGateway:
     def write_report(self, context: dict) -> ReportDraft:
         return self._generate(context, ReportDraft, "Write an evidence-grounded research report")
 
+    def close(self) -> None:
+        root_client = getattr(self._client, "root_client", None)
+        if root_client is not None:
+            root_client.close()
+
 
 class _UnsupportedFeature(Exception):
     pass
@@ -447,6 +457,7 @@ class MockModel:
         capability: CapabilityReport | None = None,
     ) -> None:
         self.settings, self.budget, self.usage = settings, budget, usage
+        self.on_usage: Callable[[Usage], None] | None = None
         self.capabilities = CapabilityReport(
             mode="mock",
             selected_output="deterministic_mock",

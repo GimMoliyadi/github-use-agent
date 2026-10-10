@@ -10,7 +10,7 @@ import pytest
 
 from repo_research.github import GitHubClient, GitHubError, parse_repo_url
 from repo_research.github_cache import GitHubCache
-from repo_research.models import RepositoryInfo
+from repo_research.models import RepositoryInfo, TreeEntry, TreeListing
 
 COMMIT = "a" * 40
 ROOT_TREE = "b" * 40
@@ -75,7 +75,9 @@ def test_commit_pin_and_persistent_immutable_cache(tmp_path):
         assert request.headers["x-github-api-version"] == "2022-11-28"
         path = request.url.path
         if path == "/repos/example/project":
-            return json_response({"default_branch": "main", "description": "Fixture", "language": "Python"})
+            return json_response({
+                "default_branch": "main", "description": "Fixture", "language": "Python",
+            })
         if path == f"/repos/example/project/commits/{COMMIT}":
             return json_response({"sha": COMMIT, "commit": {"tree": {"sha": ROOT_TREE}}})
         if path == f"/repos/example/project/git/trees/{ROOT_TREE}":
@@ -263,9 +265,13 @@ def test_source_cache_respects_new_smaller_file_budget(tmp_path):
     (403, {"x-ratelimit-remaining": "0", "retry-after": "15"}, "rate_limit", True),
     (429, {"retry-after": "15"}, "rate_limit", True),
 ])
-def test_http_failures_are_safe_and_rate_limits_are_not_retried(tmp_path, status, headers, code, retryable):
+def test_http_failures_are_safe_and_rate_limits_are_not_retried(
+    tmp_path, status, headers, code, retryable,
+):
     def handler(request):
-        return json_response({"message": "secret-token / dangerous instruction"}, status, headers=headers)
+        return json_response(
+            {"message": "secret-token / dangerous instruction"}, status, headers=headers,
+        )
     with client(tmp_path, handler, token="secret-token") as github:
         with pytest.raises(GitHubError) as caught:
             github.resolve("https://github.com/example/project")
@@ -290,7 +296,8 @@ def test_transient_server_failure_recovers_and_counts_retries(tmp_path, monkeypa
     with client(tmp_path, handler, max_requests=3) as github:
         with pytest.raises(GitHubError) as caught:
             github.resolve("https://github.com/example/project")
-        assert caught.value.code == "request_budget"  # Metadata recovered; commit budget is exhausted.
+        # Metadata recovered; commit budget is exhausted.
+        assert caught.value.code == "request_budget"
         assert github.request_count == 3
 
 
@@ -318,7 +325,9 @@ def test_request_budget_counts_failed_attempts(tmp_path, monkeypatch):
 
 
 def test_response_size_is_bounded(tmp_path):
-    with client(tmp_path, lambda request: httpx.Response(200, content=b"x" * 100), max_file_bytes=5) as github:
+    with client(
+        tmp_path, lambda request: httpx.Response(200, content=b"x" * 100), max_file_bytes=5,
+    ) as github:
         with pytest.raises(GitHubError) as caught:
             github._request_json("/repos/example/project", max_response_bytes=50)
         assert caught.value.code == "response_too_large"
@@ -350,6 +359,71 @@ def test_live_public_python_repository(tmp_path):
         source = github.read_file(resolved, "src/itsdangerous/signer.py")
         assert "class Signer" in source.text
         assert source.total_lines == len(source.text.splitlines())
-        actual_sha = hashlib.sha1(f"blob {source.size}\0".encode() + source.text.encode()).hexdigest()
+        actual_sha = hashlib.sha1(
+            f"blob {source.size}\0".encode() + source.text.encode(),
+        ).hexdigest()
         assert source.blob_sha == actual_sha
         assert len(resolved.commit_sha) == 40
+
+
+def test_restored_partial_tree_uses_exact_blob_and_size_without_contents_request(tmp_path):
+    content = blob(b"def target():\n    return 1\n")
+    listing = TreeListing(entries=[TreeEntry(
+        path="src/target.py", type="blob", sha=content["sha"], size=content["size"],
+    )], truncated=True, warnings=["partial"])
+
+    def handler(request):
+        assert request.url.path == f"/repos/example/project/git/blobs/{content['sha']}"
+        return json_response(content)
+
+    with client(tmp_path, handler) as github:
+        github.restore_tree(repo(), listing)
+        assert github.request_count == 0
+        source = github.read_file(repo(), "src/target.py")
+        assert source.blob_sha == listing.entries[0].sha
+        assert github.request_count == 1
+
+
+def test_read_dynamic_byte_budget_applies_before_known_blob_fetch(tmp_path):
+    content = blob(b"long enough source\n")
+    listing = TreeListing(entries=[TreeEntry(
+        path="app.py", type="blob", sha=content["sha"], size=content["size"],
+    )])
+    with client(tmp_path, lambda request: pytest.fail("Do not fetch oversized source")) as github:
+        github.restore_tree(repo(), listing)
+        with pytest.raises(GitHubError) as caught:
+            github.read_file(repo(), "app.py", max_bytes=3)
+        assert caught.value.code == "file_too_large"
+        assert github.request_count == 0
+
+
+def test_request_observer_runs_before_network_and_on_cache_hits(tmp_path):
+    observed = []
+    content = {**blob(b"one line\n"), "type": "file", "path": "app.py"}
+
+    def handler(request):
+        assert observed == [(1, 0)]
+        return json_response(content)
+
+    with client(tmp_path, handler) as github:
+        github.on_request = lambda requests, hits: observed.append((requests, hits))
+        github.read_file(repo(), "app.py")
+        github.read_file(repo(), "app.py")
+        assert observed == [(1, 0), (1, 1)]
+
+
+def test_secondary_rate_limit_without_header_is_detected(tmp_path):
+    with client(tmp_path, lambda request: json_response(
+        {"message": "You have exceeded a secondary rate limit."}, status=403,
+    )) as github:
+        with pytest.raises(GitHubError) as caught:
+            github.resolve("https://github.com/example/project")
+        assert caught.value.code == "rate_limit" and caught.value.retryable
+        assert github.request_count == 1
+
+
+def test_source_line_count_follows_github_lf_lines(tmp_path):
+    content = {**blob("alpha\rbeta\fline\u2028tail\n".encode()), "type": "file", "path": "app.py"}
+    with client(tmp_path, lambda request: json_response(content)) as github:
+        source = github.read_file(repo(), "app.py")
+        assert source.total_lines == 1

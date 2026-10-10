@@ -154,7 +154,8 @@ function renderUsage(task) {
 }
 function renderEvidence(evidence) {
   const box = element("details", "evidence"); const summary = element("summary");
-  summary.append(githubLink(`${evidence.path}:${evidence.start_line}–${evidence.end_line}`, evidence.url), element("span", "evidence-label", evidence.verified ? "已核验 · 查看源码" : "尚未核验"));
+  const location = `${evidence.path}:${evidence.start_line}–${evidence.end_line}`;
+  summary.append(evidence.verified ? githubLink(location, evidence.url) : element("span", "", location), element("span", "evidence-label", evidence.verified ? "已核验 · 查看源码" : "尚未核验 · 引用链接不可用"));
   const meta = element("p", "evidence-meta", `${evidence.repository || ""} · ${evidence.commit_sha || ""} · ${evidence.kind || "code"}`);
   box.append(summary, meta, element("pre", "", evidence.excerpt || "")); return box;
 }
@@ -163,7 +164,9 @@ function renderReport(task) {
   $("report-empty").hidden = available; $("report-content").hidden = !available; clear($("report-content"));
   if (!available) return;
   const content = $("report-content"); const header = element("div", "report-header"); const title = element("h2", "", report?.title || "仓库研究报告"); title.id = "report-title";
-  header.append(title); if (report?.summary) header.append(element("p", "", report.summary)); content.append(header);
+  header.append(title);
+  if (report?.summary) header.append(element("p", "small-label", "模型摘要（未逐项验证）"), element("p", "", report.summary));
+  content.append(header);
   if ((task.model_mode || task.mode || state.config?.mode) === "mock") content.append(element("p", "report-warning", "模拟模型结果：此任务使用确定性 Mock 推理。源码引用仍应经过真实内容核验；结论质量不代表真实 LLM 能力。"));
   const evidenceById = new Map((task.evidence || []).map((item) => [item.id, item])); const sections = new Map();
   (report?.claims || []).forEach((claim) => {
