@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="RepoLens — 以固定 Commit 和真实源码证据研究 GitHub 仓库。">
+    <title>RepoLens · GitHub 仓库研究</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="RepoLens 首页"><span class="brand-symbol" aria-hidden="true">⌘</span><span>RepoLens</span></a>
+      <span class="topbar-caption">理解代码，从证据开始</span>
+      <div class="topbar-right"><span id="mode-badge" class="badge mode-badge">连接中</span><button id="access-toggle" class="text-button" type="button">访问令牌</button></div>
+    </header>
+
+    <main class="layout">
+      <aside class="history-panel" aria-labelledby="history-heading">
+        <div class="panel-heading"><h2 id="history-heading">研究记录</h2><button id="refresh-history" class="icon-button" type="button" aria-label="刷新研究记录">↻</button></div>
+        <button id="new-research" class="new-research" type="button"><span aria-hidden="true">＋</span> 新建研究</button>
+        <div id="history" class="history-list"><p class="muted empty-history">正在载入记录…</p></div>
+        <div class="sidebar-note"><span class="small-label">静态代码研究</span><p>固定 Commit · 可追溯引用<br>不运行目标仓库代码</p></div>
+      </aside>
+
+      <section class="workspace">
+        <section id="auth-panel" class="card auth-panel" hidden aria-labelledby="auth-heading">
+          <h2 id="auth-heading">连接受保护的服务</h2>
+          <p class="muted">输入部署时设置的 APP_ACCESS_TOKEN。令牌只保存在当前浏览器会话。</p>
+          <form id="auth-form" class="auth-form"><label for="access-token" class="sr-only">访问令牌</label><input id="access-token" type="password" autocomplete="off" placeholder="访问令牌"><button class="primary-button" type="submit">连接</button><button id="clear-token" class="text-button" type="button">清除</button></form>
+        </section>
+        <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+        <section id="research-intro" class="research-intro">
+          <div class="eyebrow">GITHUB REPOSITORY RESEARCH</div>
+          <h1>读懂一个仓库。<br><span>找到实现的证据。</span></h1>
+          <p>围绕你的问题探索目录、模块与调用关系，生成可以回到源码核验的研究报告。</p>
+        </section>
+
+        <section id="request-card" class="card request-card" aria-labelledby="request-heading">
+          <div class="card-title"><h2 id="request-heading">开始一项研究</h2><span class="small-label">公开 GitHub 仓库</span></div>
+          <form id="research-form">
+            <label for="repo-url">仓库链接</label>
+            <input id="repo-url" name="repo_url" type="url" placeholder="https://github.com/owner/repository" required maxlength="300" autocomplete="url">
+            <label for="question">你想理解什么？</label>
+            <textarea id="question" name="question" rows="3" required minlength="3" maxlength="4000" placeholder="例如：研究这个项目如何实现工具调用、Memory 和状态管理，并找出关键代码入口。"></textarea>
+            <div class="form-columns">
+              <div><label for="ref">代码版本 <span class="optional">可选</span></label><input id="ref" name="ref" type="text" maxlength="200" placeholder="分支、Tag 或 Commit SHA"></div>
+              <div><label for="depth">研究深度</label><select id="depth" name="depth"><option value="quick">快速 · 关键入口</option><option value="standard" selected>标准 · 架构与机制</option><option value="deep">深入 · 跨文件追踪</option></select></div>
+            </div>
+            <details class="budget-details"><summary>预算与探索限制</summary><label class="checkbox-label"><input id="custom-budget" type="checkbox"> 使用自定义预算</label><div id="budget-fields" class="budget-grid"></div><p class="hint">达到任一上限后会整理已有证据并结束。费用仅在配置了模型单价时可计算。</p></details>
+            <div class="form-footer"><p class="hint">一次研究绑定一个 Commit，历史任务可以暂停和继续。</p><button id="start-button" class="primary-button" type="submit" disabled>开始研究 <span aria-hidden="true">→</span></button></div>
+          </form>
+        </section>
+
+        <section id="task-panel" hidden aria-labelledby="task-title">
+          <div class="task-heading"><div><div class="eyebrow">RESEARCH WORKSPACE</div><h1 id="task-title">仓库研究</h1><p id="task-question" class="task-question"></p></div><span id="task-status" class="badge status-badge"></span></div>
+          <div id="task-meta" class="task-meta"></div>
+          <div class="task-actions"><button id="pause-button" class="secondary-button" type="button" hidden>暂停研究</button><button id="resume-button" class="primary-button" type="button" hidden>继续研究</button><button id="download-button" class="secondary-button" type="button" hidden>下载 Markdown</button><button id="reuse-button" class="text-button" type="button">编辑研究需求</button></div>
+          <div id="task-error" class="notice error" hidden></div>
+          <div class="task-grid">
+            <section class="card progress-card" aria-labelledby="progress-heading"><div class="card-title"><h2 id="progress-heading">执行进度</h2><span id="progress-count" class="small-label"></span></div><ol id="progress-list" class="progress-list"></ol><p id="stop-reason" class="hint"></p></section>
+            <section class="card usage-card" aria-labelledby="usage-heading"><div class="card-title"><h2 id="usage-heading">预算使用</h2><span class="small-label">实时</span></div><div id="usage-list"></div></section>
+          </div>
+          <section id="report-panel" class="card report-panel" aria-label="研究报告"><div id="report-empty" class="report-empty"><div class="report-placeholder-icon" aria-hidden="true">⌕</div><h2>正在寻找答案的证据</h2><p>报告会在探索、整理与引用核验完成后显示。你可以先查看上方的执行进度。</p></div><div id="report-content" hidden></div></section>
+        </section>
+        <footer>RepoLens · Python + LangGraph · 证据驱动的仓库研究</footer>
+      </section>
+    </main>
+  </body>
+</html>

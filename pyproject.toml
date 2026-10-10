@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "repo-research-agent"
+version = "0.1.0"
+description = "Commit-pinned, evidence-grounded GitHub research with LangGraph"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+  "langgraph==1.2.14",
+  "langgraph-checkpoint-sqlite==3.1.1",
+  "langchain-openai==1.7.0",
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.34,<1",
+  "httpx>=0.28,<1",
+  "pydantic-settings>=2.7,<3",
+  "python-dotenv>=1,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "pytest-cov>=6,<8", "ruff>=0.9,<1", "playwright>=1.49,<2"]
+
+[project.scripts]
+repo-research = "repo_research.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: real external APIs; opt in with RUN_LIVE_TESTS=1", "browser: browser integration tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
