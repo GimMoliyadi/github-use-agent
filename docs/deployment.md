@@ -3,7 +3,7 @@
 ## 本地服务
 
 ```bash
-uv sync --extra dev
+uv sync --frozen --extra dev
 cp .env.example .env
 uv run repo-research serve --host 127.0.0.1 --port 8000
 ```
@@ -14,7 +14,7 @@ uv run repo-research serve --host 127.0.0.1 --port 8000
 
 ## Docker
 
-仓库包含 Dockerfile 和 .dockerignore。以下是构建/启动命令；实际构建状态见 PROGRESS.md，未运行的构建不能视为验证成功。
+已实际构建 Python 3.11 镜像并验证健康检查、静态界面、任务 API 和真实 GitHub 研究。运行记录见 [验收文档](validation.md)。
 
 ```bash
 docker build -t repolens:local .
@@ -27,7 +27,25 @@ docker run --rm --name repolens \
   repolens:local
 ```
 
-镜像使用 Python 3.11，安装本项目依赖，默认 Mock，以非 root 用户运行单个 Uvicorn 进程。镜像中不包含 `.env`、`data/` 或 Git 历史。命名卷保存持久状态；不要把密钥写入镜像或 build 参数。使用主机目录挂载时，确保运行用户 UID/GID 10001 对该目录具有写权限。
+镜像使用 Python 3.11，通过 `requirements.lock` 固定依赖版本并校验下载哈希，默认 Mock，以非 root 用户运行单个 Uvicorn 进程。镜像中不包含 `.env`、`data/` 或 Git 历史。命名卷保存持久状态；不要把密钥写入镜像或 build 参数。使用主机目录挂载时，确保运行用户 UID/GID 10001 对该目录具有写权限。
+
+本地和 CI 使用 `uv.lock`。修改依赖后运行 `uv lock`，再同步容器锁：
+
+```bash
+uv export --frozen --no-dev --no-emit-project --output-file requirements.lock
+```
+
+若云环境通过 HTTPS 代理且要求自定义 CA，构建时使用 BuildKit secret，运行时只读挂载 CA；不要禁用证书验证或将环境凭据写入镜像：
+
+```bash
+docker build --secret id=proxy_ca,src=/path/to/proxy-ca.pem -t repolens:local .
+docker run --rm -p 127.0.0.1:8000:8000 \
+  --mount type=bind,src=/path/to/proxy-ca.pem,dst=/run/proxy-ca.pem,readonly \
+  -e SSL_CERT_FILE=/run/proxy-ca.pem \
+  -v repolens-data:/data repolens:local
+```
+
+按环境要求传递 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`，保留平台的代理路由。常规环境不需要额外 CA。
 
 live 模式通过 `--env-file` 或宿主环境注入 `MODEL_MODE=live`、`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`。使用前运行 CLI probe 验证中转站：
 
@@ -54,7 +72,7 @@ uv run repo-research list
 uv run repo-research resume TASK_ID --output data/resumed-report.md
 ```
 
-CLI resume 与 Web 服务不能同时拥有同一个 DATA_DIR。先停止 Web，再执行 resume，或直接用 Web 的“继续”。恢复时保持原 `MODEL_MODE`，保留原始 DATA_DIR；不要把已有 Mock 任务切换为 live，或删除 checkpoints/cache/usage 数据。
+CLI resume 与 Web 服务不能同时拥有同一个 DATA_DIR。先停止 Web，再执行 resume，或直接用 Web 的“继续”。恢复时保持原 `MODEL_MODE`，保留原始 DATA_DIR；不要把已有 Mock 任务切换为 live，或删除 checkpoints/cache/usage 数据。live 任务还校验模型、Base URL、输出模式与计费配置的指纹；密钥轮换允许，修改上述配置后拒绝恢复以避免版本和成本混淆。
 
 重启将未完成任务标记为 interrupted，由用户手动继续。额度窗口或开发任务中断后，新任务先阅读 `AGENTS.md`、`PROGRESS.md`，检查 Git 工作区，运行离线测试，再启动应用或恢复历史。
 

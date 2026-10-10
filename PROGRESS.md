@@ -1,5 +1,86 @@
 # Progress
 
+## 2026-10-10 — current acceptance status: runnable and tested
+
+The dependency/network block recorded below has been resolved. `uv.lock` locks
+the environment; use `uv sync --frozen --extra dev`. The actual LangGraph worker,
+public GitHub REST research, browser UI and non-root Python 3.11 Docker image
+have run successfully. No real paid LLM has been called.
+
+Verified results:
+
+- Final offline suite after evidence-budget refinement: **219 passed, 6
+  deselected**; global Ruff passed. Earlier stage: 212 passed, 6 deselected.
+- Agent integration: **17 passed**, including real `os._exit(23)` worker loss,
+  then a new runner restoring the fixed Commit, SQLite checkpoint and durable
+  LLM reservation. Service/storage: **22 passed**, including shutdown/reopen/
+  manual resume. These counts are subsets of the offline suite.
+- Model adapter: **35 passed**, using Mock/Fake models and `httpx.MockTransport`,
+  including the actual ChatOpenAI/OpenAI SDK request path. Chat, tools, structured
+  output, JSON-text fallback, retries, output limits and secret sanitization were
+  verified without calling a real paid provider.
+- Web: **19 passed**, including actual Chromium desktop **1440 px** and mobile
+  **390 px** flows with simulated task data. Screenshots are in
+  `docs/screenshots/`.
+- Opt-in real GitHub pytest: **4 passed, 56 deselected** (final rerun: 17.12 s). Actual Python REST and
+  LangGraph research of `pypa/sampleproject` completed overview and directed
+  `sample.main` cases at `621e4974ca25ce531773def586ba3ed8e736b3fc` with **4** and
+  **4** citations after the evidence-budget refinement. Every citation was
+  independently reread from GitHub and checked for complete source, Blob SHA,
+  exact LF lines and fixed-SHA permalink. Both tasks used Mock and `llm_calls=0`.
+- A real browser-driven `pallets/itsdangerous` research task completed at
+  `672971d66a2ef9f85151e53283113f33d642dabd`: **9 verified citations**, 10
+  iterations, 3 files, 14,491 analyzed bytes, 6 API requests, 0 LLM calls. Actual
+  Chromium 1440/390 px showed no horizontal overflow or JavaScript errors.
+- Python **3.11** Docker image built and ran as non-root. Health/static/API checks
+  and a real GitHub research task passed against the final image: 6 iterations,
+  3 files, 253 analyzed bytes, 6 API requests, 3 verified citations, 0 LLM calls.
+  The quick task completed a finite report at `iteration_budget`. Hosted CI and
+  public hosting are unrun.
+
+The evidence refinement adds bounded goal-focused citations, reuse of covering
+ranges, merged call-site ranges and explicit index-only observations. Final
+offline and fresh real CLI/UI checks passed. Public-safe execution records and
+reports are now archived in `docs/validation/`; earlier sampleproject counts of
+13/10 belong to the prior stage and are superseded by the final 4/4 records.
+The final Python 3.11 Docker image was built as
+`sha256:672770f2821cb83a7bffe9caad93dabfd23a047f4ca21b0ceefe1a42c7584ed0`;
+Its final HTTP smoke and research passed, with a public record in
+`docs/validation/docker-validation.json`. Docker installs `requirements.lock`
+using `pip --require-hashes`, then installs the local project with `--no-deps`.
+See
+[docs/validation.md](docs/validation.md) for scope and commands.
+
+Stable implementation saved as Git commit `78e3c41`. Final source, screenshots,
+public-safe reports and continuation docs are saved in this repository. Portable
+delivery copies at `/workspace/repolens-source.zip` and
+`/workspace/repolens-history.bundle` are regenerated from the final committed HEAD;
+the bundle can restore the entire local Git history. Runtime data and secrets
+are excluded from both artifacts. A local Mock Web service can reuse
+`data/ui-validation-final/` to display the completed real-source research record.
+
+Still pending:
+
+- User-specified live LLM credentials and real compatibility/quality validation.
+  Do not substitute another paid provider. Run the live capability probe, then a
+  small research task, only when the requested relay configuration is available.
+- Public GitHub publication. CLI identity `GimMoliyadi` was verified, but repository
+  creation was denied by the available resource permissions. No remote is
+  configured and no push/public repository is claimed. GraphQL and official REST
+  creation both confirmed unavailable integration permissions (REST HTTP 403).
+  The user has been asked for an authorized writable repository URL.
+
+Keep the whole DATA_DIR for recovery: metadata, checkpoints, source cache and
+`usage-ledger.sqlite3`. Reservations are durable before HTTP; retries or resumed
+requests may still incur extra provider charges. This preserves conservative
+spent budgets, not exactly-once paid API execution. Dollar limits need both token
+prices; otherwise fees remain explicitly unknown.
+
+## Historical development record
+
+The sections below describe earlier stages and resolved blockers. They are kept
+for continuity and do not override the current acceptance status above.
+
 ## 2026-10-10 — initial scaffold
 
 - Empty managed workspace; project created at `/workspace/repo-research-agent`.

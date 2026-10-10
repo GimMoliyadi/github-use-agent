@@ -4,12 +4,16 @@
 
 项目提供 FastAPI Web UI、CLI、SQLite Checkpointer、不可变源码缓存以及第三方 OpenAI-compatible 模型适配层。默认 `Mock` 模式不调用 LLM；GitHub 数据仍通过官方 REST API 获取。Mock 报告会明确标注为模拟研究。
 
+![RepoLens 实际研究界面：真实 GitHub 源码与明确标注的 Mock 推理](docs/screenshots/desktop.png)
+
+[实际验收记录](docs/validation.md) · [带永久链接的研究示例](docs/validation/targeted-report.md) · [手机截图](docs/screenshots/mobile.png) · [架构与恢复机制](docs/architecture.md)
+
 ## 快速开始
 
 需要 Python 3.11+ 和 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
-uv sync --extra dev
+uv sync --frozen --extra dev
 cp .env.example .env
 uv run repo-research serve --host 127.0.0.1 --port 8000
 ```
@@ -118,7 +122,18 @@ RUN_LIVE_TESTS=1 uv run python examples/check_live.py --output-dir data/live-val
 
 验证脚本研究 `pypa/sampleproject` 的项目结构与 `sample.main`，使用独立缓存从 GitHub 固定 Commit 重新读取每条引用的完整文件，检查路径、Blob SHA、行号、原文和永久链接，并保存 Markdown 和 `results.json`。脚本强制 Mock，即使本地 `.env` 配置了 live，也不会调用真实 LLM。
 
-测试覆盖 URL 校验、固定版本、缓存、截断目录、文件大小/二进制/完整性、API 故障与速率限制、探索预算、引用校验和中断恢复；Web 测试覆盖 API 和界面交互。具体哪些检查已实际执行及结果，以 [PROGRESS.md](PROGRESS.md) 中的验收记录为准。第三方真实 LLM 尚需用户提供密钥并实际验证；Docker 文件和 CI 配置的存在本身不等于已构建或已在托管 CI 运行。
+浏览器验收可使用 Playwright 的 Chromium 或指定已安装的浏览器：
+
+```bash
+uv run playwright install chromium
+RUN_BROWSER_TESTS=1 uv run pytest tests/test_web.py -m browser -q
+RUN_LIVE_TESTS=1 RUN_BROWSER_TESTS=1 uv run python examples/check_ui_live.py
+# 使用系统 Chromium 时，增加 CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
+```
+
+前者使用模拟任务数据验证启动、暂停、恢复、历史与手机布局；后者启动实际服务，研究真实 `pallets/itsdangerous`，保存截图、报告和结构化执行记录，推理仍为 Mock。
+
+测试覆盖 URL 校验、固定版本、缓存、截断目录、文件大小/二进制/完整性、API 故障与速率限制、探索预算、引用校验和中断恢复。已实际执行离线测试、真实 GitHub API 研究、Chromium 桌面/手机浏览器交互和 Docker 非 root 运行；完整命令、结果和验证边界见 [验收记录](docs/validation.md)。没有真实 LLM 凭据，模型协议通过真实适配器和 MockTransport 验证，尚未验证第三方服务或真实模型推理质量。GitHub Actions 配置已提供，尚未在托管 CI 运行。
 
 ## 项目结构与部署
 

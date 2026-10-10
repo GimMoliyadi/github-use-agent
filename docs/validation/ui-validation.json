@@ -1,0 +1,31 @@
+{
+  "recorded_at_utc": "2026-10-10T07:09:02.336767+00:00",
+  "status": "PASS",
+  "validation": "Chromium + actual FastAPI service + real GitHub REST + Mock",
+  "repository": "pallets/itsdangerous",
+  "commit_sha": "672971d66a2ef9f85151e53283113f33d642dabd",
+  "question": "研究签名和验证的实现：定位 Signer.sign、Signer.unsign 与 Serializer.loads 的关键代码入口和静态调用关系。",
+  "viewports": [
+    1440,
+    390
+  ],
+  "horizontal_overflow": false,
+  "javascript_errors": [],
+  "model_mode": "mock",
+  "usage": {
+    "iterations": 10,
+    "files": 3,
+    "bytes": 14491,
+    "api_requests": 6,
+    "cache_hits": 0,
+    "llm_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "reserved_tokens": 0,
+    "cost_usd": 0.0,
+    "cost_known": false
+  },
+  "verified_evidence": 9,
+  "stop_reason": "model_sufficient",
+  "real_llm_called": false
+}

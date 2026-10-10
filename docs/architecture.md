@@ -8,11 +8,13 @@ RepoLens 使用一个 LangGraph 研究 Agent。研究目标、模型决策、工
 
 `github.py` 只读取官方 GitHub REST。仓库 URL 限定 HTTPS 的 `github.com/owner/name` 根地址，拒绝凭据、查询、其他站点和 tree/blob 子页。初始化取得默认分支或用户 Ref 的完整 Commit SHA 及 Tree SHA。文件来自该 SHA 下的 Contents API，或已经索引的 Git Blob；下载字节按 Git 对象格式重新计算 SHA-1。对于无法完整解码、大小不一致、哈希不一致或非 UTF-8 文本，读取失败，禁止引用。
 
-`github_cache.py` 使用 SQLite WAL 缓存不可变对象。分支、标签和默认分支属于可变引用，解析时重新请求；完整 Commit、Tree、Blob 和 Commit+path 内容可复用。递归 Git Tree 被截断时执行有限的广度分层遍历，达到请求或条目上限时保留可用部分，并输出明确的不完整警告。Git Trees API 不提供分页；项目不会把伪造的分页视为完整性保证。
+`github_cache.py` 使用 SQLite WAL 缓存不可变对象。分支、标签和默认分支属于可变引用，解析时重新请求；完整 Commit、Tree、Blob 和 Commit+path 内容可复用。递归 Git Tree 被截断或响应超过安全大小时执行有限的广度分层遍历，达到请求或条目上限时保留可用部分，并输出明确的不完整警告。Git Trees API 不提供分页；项目不会把伪造的分页视为完整性保证。
 
 `llm.py` 通过 LangChain `ChatOpenAI` 明确使用 Chat Completions，`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL` 指向用户中转站。应用单独管理超时、有限重试和每次请求预算，SDK 自动重试被关闭。能力检测验证聊天返回值、实际工具参数和 JSON Schema 值；协议不支持时退回 Pydantic 校验的 JSON 文本。Mock 仅模拟决策和草稿，始终标记来源。
 
 `tools.py` 执行读文件、文本搜索、符号和引用追踪。下载预算与片段预算分开：保存完整合格文本用于引用校验，但只向模型显示有限行数和有限搜索结果。Python 采用 `ast`，其他语言的符号发现属于有限的语法文本线索。静态跨文件候选不等同于运行时调用关系。
+
+符号索引保留最多 16 个定义的导航信息，每页默认最多新增 4 条引用，指定目标时最多 6 条。追踪动作最多新增 8 条，优先保留目标定义、调用位置、相关导入和跨文件候选，合并相邻调用片段并复用已有精确覆盖。没有引用的项标为 `index_only`，只能用于选择下一次读取，不能进入已验证结论。这样避免大文件中无关函数过早耗尽证据预算。
 
 `report.py` 校验每条证据的仓库、Commit、路径、字节、Blob、LF 行号、原文、ID 和 URL。事实/推断必须引用已验证证据；无来源结论降级未知，仅文档或配置支撑的实现事实降为推断。自然语言摘要单独标注为未逐项验证。输出 Markdown 对模型和仓库文本做安全转义，代码片段按需要扩大 fenced-code 标记，永久链接仅由应用构造。
 
@@ -37,7 +39,7 @@ RepoLens 使用一个 LangGraph 研究 Agent。研究目标、模型决策、工
 
 ## 持久化、任务服务与恢复
 
-`storage.py` 保存任务元信息和供 UI 查询的进度快照；图检查点保存精确执行位置。资源计数账本独立记录发出请求前的 API 次数及模型 Token/费用预留，用于强制中断后的保守恢复。SQLite 使用短事务、WAL 和 busy timeout。
+`storage.py` 保存任务元信息和供 UI 查询的进度快照；图检查点保存精确执行位置。资源计数账本独立记录发出请求前的 API 次数及模型 Token/费用预留，用于强制中断后的保守恢复。初始化解析出的 Commit 在目录请求前独立落盘，强制终止后的重试不会切换到更新的分支版本。SQLite 使用短事务、WAL 和 busy timeout。
 
 `service.py` 通过有限线程池运行任务，工作请求不阻塞 HTTP。默认两个工作线程，最多四个活动/排队任务。`fcntl` 文件锁限制同一目录的单服务进程，防止另一进程启动时误标记正在运行的任务。服务重启将未完成任务标为 interrupted，用户通过 UI 或 `repo-research resume TASK_ID` 明确恢复；不会自动发起可能付费的工作。
 

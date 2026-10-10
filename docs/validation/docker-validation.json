@@ -1,0 +1,32 @@
+{
+  "recorded_at_utc": "2026-10-10T07:11:33.437425+00:00",
+  "status": "PASS",
+  "runtime": "Docker, Python 3.11, nonroot app UID 10001",
+  "checks": [
+    "health",
+    "self-hosted static assets",
+    "safe config",
+    "HTTP start/poll/report",
+    "real GitHub research"
+  ],
+  "repository": "pypa/sampleproject",
+  "commit_sha": "621e4974ca25ce531773def586ba3ed8e736b3fc",
+  "model_mode": "mock",
+  "real_llm_called": false,
+  "verified_citations": 3,
+  "usage": {
+    "iterations": 6,
+    "files": 3,
+    "bytes": 253,
+    "api_requests": 6,
+    "cache_hits": 0,
+    "llm_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "reserved_tokens": 0,
+    "cost_usd": 0.0,
+    "cost_known": false
+  },
+  "stop_reason": "iteration_budget",
+  "image_sha256": "672770f2821cb83a7bffe9caad93dabfd23a047f4ca21b0ceefe1a42c7584ed0"
+}

@@ -1,0 +1,61 @@
+{
+  "recorded_at_utc": "2026-10-10T07:09:08.767800+00:00",
+  "scope": "Real GitHub source access; research reasoning/report text simulated by Mock",
+  "results": [
+    {
+      "case": "overview",
+      "validation": "real GitHub REST + deterministic Mock model",
+      "repository": "pypa/sampleproject",
+      "commit_sha": "621e4974ca25ce531773def586ba3ed8e736b3fc",
+      "status": "completed",
+      "question": "研究 Python 项目的架构、技术栈、打包配置及代码入口。",
+      "verified_citations": 4,
+      "citation_check": "all paths, pinned commit, complete bytes, blob SHA, exact LF lines, permalink",
+      "usage": {
+        "iterations": 10,
+        "files": 4,
+        "bytes": 1716,
+        "api_requests": 7,
+        "cache_hits": 0,
+        "llm_calls": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "reserved_tokens": 0,
+        "cost_usd": 0.0,
+        "cost_known": false
+      },
+      "stop_reason": "model_sufficient",
+      "real_llm_called": false
+    },
+    {
+      "case": "targeted",
+      "validation": "real GitHub REST + deterministic Mock model",
+      "repository": "pypa/sampleproject",
+      "commit_sha": "621e4974ca25ce531773def586ba3ed8e736b3fc",
+      "status": "completed",
+      "question": "研究 src/sample/__init__.py 中 sample.main 函数的定义、入口配置和静态调用位置。",
+      "verified_citations": 4,
+      "citation_check": "all paths, pinned commit, complete bytes, blob SHA, exact LF lines, permalink",
+      "usage": {
+        "iterations": 10,
+        "files": 4,
+        "bytes": 1716,
+        "api_requests": 7,
+        "cache_hits": 0,
+        "llm_calls": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "reserved_tokens": 0,
+        "cost_usd": 0.0,
+        "cost_known": false
+      },
+      "stop_reason": "model_sufficient",
+      "real_llm_called": false
+    },
+    {
+      "case": "invalid_url",
+      "status": "passed",
+      "external_api_called": false
+    }
+  ]
+}
