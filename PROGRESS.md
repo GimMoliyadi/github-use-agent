@@ -10,9 +10,14 @@
   probe output allowance for model compatibility. Model ID remains required.
 - Replaced unconditional POSIX lock import with POSIX/Windows nonblocking locks;
   Windows settings writes no longer require os.fchmod. Added native Windows CI.
-- Local Linux offline: **242 passed, 8 deselected**, Ruff passed. Chromium
-  desktop/mobile settings tests verify HTTP 401 hints without exposing the key.
+- Local Linux offline: **243 passed, 8 deselected**, Ruff passed. Chromium
+  desktop/mobile settings and research flows: **4 passed, 40 deselected**;
+  settings tests verify HTTP 401 hints without exposing the key.
   No actual user relay credentials or paid model requests were used.
+- The first native Windows run passed model settings but exposed a terminal
+  pause acknowledgement race (240 passed, 1 failed, 1 skipped). The worker now
+  atomically publishes terminal status and clears pause_requested under the
+  same lock as pause(); a deterministic blocked-cleanup regression passes.
 - Native Windows validation is pending the new hosted matrix run; preserve
   that distinction until its actual result is available.
 

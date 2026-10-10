@@ -223,7 +223,12 @@ class ResearchService:
                     key: value for key, value in state.items()
                     if key in self.store.MUTABLE_FIELDS and key != "pause_requested"
                 }
-                self.store.patch(task_id, **fields)
+                if fields.get("status") in {"paused", "completed", "failed", "interrupted"}:
+                    fields["pause_requested"] = False
+                # Publish terminal status and pause acknowledgement atomically;
+                # serialize with pause() so it cannot write a stale request.
+                with self._lock:
+                    self.store.patch(task_id, **fields)
 
             state = runner.run(
                 task_id, ResearchRequest.model_validate(task["request"]),

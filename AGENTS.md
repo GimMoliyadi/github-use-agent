@@ -71,6 +71,9 @@ responsive Chromium and non-root Docker have run; historical install blockers
 are resolved. The initial release offline suite was 219 passed, 6 deselected;
 the Web model-settings update passes 233 offline tests with 8 deselected, and
 four actual browser tests pass (configuration and research flows at two widths).
+The relay-diagnostics/Windows patch passes 243 local offline tests, 8 deselected,
+and 4 browser tests, 40 deselected. Hosted Windows CI is authoritative for native
+Windows; fork-based hard-exit tests require POSIX and are skipped there.
 Fresh live
 CLI/UI records after evidence refinement are archived in `docs/validation/`:
 sampleproject 4/4 citations and itsdangerous 9. The final Docker non-root HTTP and

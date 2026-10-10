@@ -174,6 +174,44 @@ def test_bounded_queue_and_cooperative_pause(tmp_path, monkeypatch):
         service.close()
 
 
+def test_pause_acknowledgement_is_visible_before_worker_cleanup(tmp_path, monkeypatch):
+    entered, release, published, finish = (threading.Event() for _ in range(4))
+
+    class Runner:
+        def __init__(self, pause):
+            self.pause = pause
+
+        def run(self, _task_id, _request, _budget, **kwargs):
+            entered.set()
+            assert release.wait(10)
+            assert self.pause.is_set()
+            state = {"status": "paused"}
+            kwargs["on_update"](state)
+            published.set()
+            assert finish.wait(10)
+            return state
+
+        def close(self):
+            pass
+
+    service = ResearchService(Settings(_env_file=None, data_dir=tmp_path))
+    monkeypatch.setattr(service, "_create_runner", Runner)
+    try:
+        task = service.start(request())
+        assert entered.wait(5)
+        assert service.pause(task["id"])["pause_requested"]
+        release.set()
+        assert published.wait(5)
+        snapshot = service.get_task(task["id"])
+        assert snapshot["status"] == "paused" and not snapshot["pause_requested"]
+        with pytest.raises(ValueError, match="Only queued or running"):
+            service.pause(task["id"])
+    finally:
+        release.set()
+        finish.set()
+        service.close()
+
+
 def test_worker_error_is_sanitized_and_recovery_preserves_saved_budget(tmp_path, monkeypatch):
     observed_budgets = []
 
