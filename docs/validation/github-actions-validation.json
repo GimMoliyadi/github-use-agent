@@ -1,0 +1,18 @@
+{
+  "validation": "Actual hosted GitHub Actions offline checks",
+  "repository": "GimMoliyadi/github-use-agent",
+  "python_version": "3.11",
+  "status": "completed",
+  "conclusion": "success",
+  "head_sha": "77513106a475b4efe9b3beac3608636e3f7737f4",
+  "run_url": "https://github.com/GimMoliyadi/github-use-agent/actions/runs/38034286129",
+  "created_at": "2026-10-10T07:23:56Z",
+  "updated_at": "2026-10-10T07:24:14Z",
+  "log_evidence": [
+    "2026-10-10T07:24:04.0054473Z Using CPython 3.11.17",
+    "2026-10-10T07:24:04.9947601Z All checks passed!",
+    "2026-10-10T07:24:11.2951632Z ====================== 219 passed, 6 deselected in 4.62s ======================="
+  ],
+  "external_github_research_tested": false,
+  "real_llm_called": false
+}

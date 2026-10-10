@@ -16,8 +16,9 @@
 | itsdangerous 浏览器研究 | 实际 Chromium、FastAPI worker、真实 GitHub、Mock 推理 | 9 条验证引用；1440/390 px 无溢出或 JS 错误 |
 | Docker Python 3.11 | 实际构建、非 root 启动、health/static/API、真实 GitHub 任务 | 最终镜像通过；quick 研究完成并验证 3 条引用 |
 | 用户指定中转站 | 真实聊天、工具调用、结构化输出及研究质量 | 缺少真实模型配置，未调用 |
-| 托管 CI / 公网服务 | GitHub Actions 或公开托管环境 | 配置已提供，未执行 |
-| 公开 GitHub 仓库 | 创建仓库、配置 remote、推送 | 创建权限被拒绝；当前无 remote，未发布 |
+| 托管 GitHub Actions | 实际 GitHub runner、CPython 3.11.17、冻结安装、Ruff、离线测试 | SUCCESS；Ruff 通过；219 passed / 6 deselected，4.62 秒 |
+| 公网 Web 服务 | 公开托管环境 | 未部署 |
+| 公开 GitHub 仓库 | 用户授权既有公开空仓库，首次 main push | 已成功发布完整历史；初始提交 7751310 |
 
 套件数量存在重叠，不能把模块测试数量加到完整离线数量上。`deselected` 表示通过 pytest marker 排除的其他用例，不表示被排除用例已通过。证据预算优化增加了 7 个离线用例；此前完整离线结果为 212 passed，6 deselected，最终离线结果为上表的 219 passed。
 
@@ -57,7 +58,7 @@ Agent 和服务测试实际验证了无效 URL、固定版本、定向函数发�
 - [桌面截图](screenshots/desktop.png)
 - [手机截图](screenshots/mobile.png)
 
-最终 Python 3.11 镜像 ID 为 `sha256:672770f2821cb83a7bffe9caad93dabfd23a047f4ca21b0ceefe1a42c7584ed0`。实际以非 root 用户 UID 10001 运行，health、静态页面、脱敏 config、API 与报告下载通过；真实 pypa/sampleproject quick 任务完成 6 次探索、3 个文件、253 字节、6 次 API 请求、3 条验证引用、0 次 LLM 调用，在 `iteration_budget` 合理结束并生成有限报告。记录时间 `2026-10-10T07:11:33.437425+00:00`；详细结果见 [Docker 验证 JSON](validation/docker-validation.json)。Dockerfile 使用 `requirements.lock` 与 `pip --require-hashes` 安装冻结生产依赖，再用 `--no-deps` 安装本地项目。验证的是本地容器；GitHub Actions 托管 CI 和公网部署尚未执行。
+最终 Python 3.11 镜像 ID 为 `sha256:672770f2821cb83a7bffe9caad93dabfd23a047f4ca21b0ceefe1a42c7584ed0`。实际以非 root 用户 UID 10001 运行，health、静态页面、脱敏 config、API 与报告下载通过；真实 pypa/sampleproject quick 任务完成 6 次探索、3 个文件、253 字节、6 次 API 请求、3 条验证引用、0 次 LLM 调用，在 `iteration_budget` 合理结束并生成有限报告。记录时间 `2026-10-10T07:11:33.437425+00:00`；详细结果见 [Docker 验证 JSON](validation/docker-validation.json)。Dockerfile 使用 `requirements.lock` 与 `pip --require-hashes` 安装冻结生产依赖，再用 `--no-deps` 安装本地项目。Docker 验证的是本地容器，托管 GitHub Actions 也已成功，公网 Web 尚未部署。
 
 ## 可复现命令
 
@@ -80,6 +81,10 @@ uv run --no-sync repo-research probe --mode mock
 
 ## 发布状态与历史
 
-GitHub CLI 身份 `GimMoliyadi` 已验证成功，但可用集成权限拒绝创建仓库。GraphQL `createRepository` 和官方 REST `POST /user/repos` 两种方式均确认无法创建；REST 返回 HTTP 403 `Resource not accessible by integration`。当前没有 git remote，没有创建仓库、推送或发布。已向用户请求可写的仓库 URL；收到授权远端后再推送并记录真实地址。
+已发布至用户授权的公开仓库 [GimMoliyadi/github-use-agent](https://github.com/GimMoliyadi/github-use-agent)。Root 验证仓库 `isPrivate=false`、`viewerPermission=ADMIN` 且无已有 refs 后，配置 `origin=https://github.com/GimMoliyadi/github-use-agent.git` 并首次正常推送 `main`，完整历史发布于 [77513106a475b4efe9b3beac3608636e3f7737f4](https://github.com/GimMoliyadi/github-use-agent/commit/77513106a475b4efe9b3beac3608636e3f7737f4)，未使用 force。
+
+此前 GitHub CLI 身份已验证，但 GraphQL `createRepository` 与官方 REST `POST /user/repos` 的创建权限均遭拒绝，REST 返回 HTTP 403 `Resource not accessible by integration`。之后用户提供现有的空授权仓库，首次推送成功，解决了发布阻塞；未另外创建仓库。
+
+实际托管 [Offline checks run 38034286129](https://github.com/GimMoliyadi/github-use-agent/actions/runs/38034286129) 已完成 **SUCCESS**，对应完整 head `77513106a475b4efe9b3beac3608636e3f7737f4`，创建时间 `2026-10-10T07:23:56Z`，更新时间 `2026-10-10T07:24:14Z`。实际日志确认 CPython **3.11.17**、Ruff `All checks passed!`、离线测试 **219 passed，6 deselected，4.62 秒**。冻结安装和完整托管结果归档于 [GitHub Actions 验证 JSON](validation/github-actions-validation.json)。这是实际托管结果，不是本地测试的代称；该离线 workflow 没有运行真实 GitHub 研究或真实 LLM。真实付费模型仍缺少配置，公开仓库发布不代表已部署公网 Web 服务。
 
 早期依赖和浏览器网络权限阻塞已经解决，保留在 `PROGRESS.md` 历史区。此前的连接器源码读取、本地静态快照重放和 StubService HTTP 冒烟只证明当时各自有限的范围；已通过的真实 Python REST、LangGraph、浏览器和 Docker 结果如上，取代旧文档中的当前“尚未执行”状态。

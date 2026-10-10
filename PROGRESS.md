@@ -7,6 +7,18 @@ the environment; use `uv sync --frozen --extra dev`. The actual LangGraph worker
 public GitHub REST research, browser UI and non-root Python 3.11 Docker image
 have run successfully. No real paid LLM has been called.
 
+Published to the user-authorized public repository
+[GimMoliyadi/github-use-agent](https://github.com/GimMoliyadi/github-use-agent).
+The first normal push uploaded the complete history to `main` at
+[`77513106a475b4efe9b3beac3608636e3f7737f4`](https://github.com/GimMoliyadi/github-use-agent/commit/77513106a475b4efe9b3beac3608636e3f7737f4).
+`origin` is `https://github.com/GimMoliyadi/github-use-agent.git`; no force push
+was used. Hosted Python 3.11
+[Offline checks run 38034286129](https://github.com/GimMoliyadi/github-use-agent/actions/runs/38034286129)
+completed **SUCCESS** at that initial publish commit: CPython 3.11.17, Ruff
+passed, **219 passed / 6 deselected in 4.62 s**. The actual run/log evidence is
+archived in [github-actions-validation.json](docs/validation/github-actions-validation.json).
+Public website hosting has not been deployed.
+
 Verified results:
 
 - Final offline suite after evidence-budget refinement: **219 passed, 6
@@ -35,8 +47,8 @@ Verified results:
 - Python **3.11** Docker image built and ran as non-root. Health/static/API checks
   and a real GitHub research task passed against the final image: 6 iterations,
   3 files, 253 analyzed bytes, 6 API requests, 3 verified citations, 0 LLM calls.
-  The quick task completed a finite report at `iteration_budget`. Hosted CI and
-  public hosting are unrun.
+  The quick task completed a finite report at `iteration_budget`. Hosted offline
+  CI passed on Python 3.11; public website hosting is unrun.
 
 The evidence refinement adds bounded goal-focused citations, reuse of covering
 ranges, merged call-site ranges and explicit index-only observations. Final
@@ -64,11 +76,12 @@ Still pending:
 - User-specified live LLM credentials and real compatibility/quality validation.
   Do not substitute another paid provider. Run the live capability probe, then a
   small research task, only when the requested relay configuration is available.
-- Public GitHub publication. CLI identity `GimMoliyadi` was verified, but repository
-  creation was denied by the available resource permissions. No remote is
-  configured and no push/public repository is claimed. GraphQL and official REST
-  creation both confirmed unavailable integration permissions (REST HTTP 403).
-  The user has been asked for an authorized writable repository URL.
+
+Earlier GraphQL and REST repository-creation requests were denied (REST HTTP
+403). The user subsequently supplied this existing empty public repository;
+Root verified ADMIN access and no existing refs, then configured `origin` and
+successfully pushed `main`. The creation-permission issue therefore no longer
+blocks publication; no other repository was created.
 
 Keep the whole DATA_DIR for recovery: metadata, checkpoints, source cache and
 `usage-ledger.sqlite3`. Reservations are durable before HTTP; retries or resumed

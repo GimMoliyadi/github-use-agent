@@ -81,12 +81,25 @@ instead of assuming an old grant or old block. Managed-cloud Docker build/run
 must follow that runtime skill's proxy/CA instructions. Keep `.env`, credentials
 and DATA_DIR out of commits and images.
 
-Publication is pending: GitHub identity was verified but GraphQL createRepository
-and REST POST /user/repos were denied, and no remote is configured. Do not claim
-publication or invent a URL.
-When the user supplies an authorized writable remote, inspect it, push a reviewable
-branch and record the actual address/commit. Do not silently switch identities or
-request broader account access.
+Published repository: [GimMoliyadi/github-use-agent](https://github.com/GimMoliyadi/github-use-agent).
+`origin` is `https://github.com/GimMoliyadi/github-use-agent.git`, branch `main`.
+The initial normal push published the complete history at
+[`77513106a475b4efe9b3beac3608636e3f7737f4`](https://github.com/GimMoliyadi/github-use-agent/commit/77513106a475b4efe9b3beac3608636e3f7737f4).
+The user supplied this empty public repository after earlier GraphQL/REST create
+requests were denied; ADMIN access and empty refs were verified before pushing.
+Continue against this authorized remote, inspect local changes and fetch remote
+history before later pushes. Preserve published history; do not force rewrite it,
+silently switch identities or request broader account access.
+
+Hosted Python 3.11
+[Offline checks run 38034286129](https://github.com/GimMoliyadi/github-use-agent/actions/runs/38034286129)
+completed SUCCESS for initial publish commit `7751310`: CPython 3.11.17, Ruff
+passed, 219 passed / 6 deselected in 4.62 s. See
+[the archived hosted result](docs/validation/github-actions-validation.json).
+Verify later pushes with
+their own actual CI result; the existing success does not cover later untested
+changes. Real third-party LLM validation still requires the user's relay
+configuration, and a public website has not been hosted.
 
 Portable handoff artifacts live at `/workspace/repolens-source.zip` and
 `/workspace/repolens-history.bundle`. They contain committed source/history only,

@@ -4,6 +4,10 @@
 
 项目提供 FastAPI Web UI、CLI、SQLite Checkpointer、不可变源码缓存以及第三方 OpenAI-compatible 模型适配层。默认 `Mock` 模式不调用 LLM；GitHub 数据仍通过官方 REST API 获取。Mock 报告会明确标注为模拟研究。
 
+公开源码仓库：[GimMoliyadi/github-use-agent](https://github.com/GimMoliyadi/github-use-agent)。
+
+[![Offline checks](https://github.com/GimMoliyadi/github-use-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/GimMoliyadi/github-use-agent/actions/workflows/ci.yml)
+
 ![RepoLens 实际研究界面：真实 GitHub 源码与明确标注的 Mock 推理](docs/screenshots/desktop.png)
 
 [实际验收记录](docs/validation.md) · [带永久链接的研究示例](docs/validation/targeted-report.md) · [手机截图](docs/screenshots/mobile.png) · [架构与恢复机制](docs/architecture.md)
@@ -13,6 +17,8 @@
 需要 Python 3.11+ 和 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
+git clone https://github.com/GimMoliyadi/github-use-agent.git
+cd github-use-agent
 uv sync --frozen --extra dev
 cp .env.example .env
 uv run repo-research serve --host 127.0.0.1 --port 8000
@@ -133,7 +139,7 @@ RUN_LIVE_TESTS=1 RUN_BROWSER_TESTS=1 uv run python examples/check_ui_live.py
 
 前者使用模拟任务数据验证启动、暂停、恢复、历史与手机布局；后者启动实际服务，研究真实 `pallets/itsdangerous`，保存截图、报告和结构化执行记录，推理仍为 Mock。
 
-测试覆盖 URL 校验、固定版本、缓存、截断目录、文件大小/二进制/完整性、API 故障与速率限制、探索预算、引用校验和中断恢复。已实际执行离线测试、真实 GitHub API 研究、Chromium 桌面/手机浏览器交互和 Docker 非 root 运行；完整命令、结果和验证边界见 [验收记录](docs/validation.md)。没有真实 LLM 凭据，模型协议通过真实适配器和 MockTransport 验证，尚未验证第三方服务或真实模型推理质量。GitHub Actions 配置已提供，尚未在托管 CI 运行。
+测试覆盖 URL 校验、固定版本、缓存、截断目录、文件大小/二进制/完整性、API 故障与速率限制、探索预算、引用校验和中断恢复。已实际执行离线测试、真实 GitHub API 研究、Chromium 桌面/手机浏览器交互和 Docker 非 root 运行；GitHub Actions 的 Python 3.11 离线检查也已通过。完整命令、结果和验证边界见 [验收记录](docs/validation.md)。没有真实 LLM 凭据，模型协议通过真实适配器和 MockTransport 验证，尚未验证第三方服务或真实模型推理质量。
 
 ## 项目结构与部署
 
