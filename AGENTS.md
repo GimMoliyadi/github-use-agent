@@ -74,6 +74,8 @@ four actual browser tests pass (configuration and research flows at two widths).
 The relay-diagnostics/Windows patch passes 243 local offline tests, 8 deselected,
 and 4 browser tests, 40 deselected. Hosted Windows CI is authoritative for native
 Windows; fork-based hard-exit tests require POSIX and are skipped there.
+Hosted run 38047756535 passed Ubuntu and native Windows at c804699; Windows
+242 passed, 1 skipped, 8 deselected. See docs/validation/windows-ci-validation.json.
 Fresh live
 CLI/UI records after evidence refinement are archived in `docs/validation/`:
 sampleproject 4/4 citations and itsdangerous 9. The final Docker non-root HTTP and

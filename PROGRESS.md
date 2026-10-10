@@ -18,8 +18,10 @@
   pause acknowledgement race (240 passed, 1 failed, 1 skipped). The worker now
   atomically publishes terminal status and clears pause_requested under the
   same lock as pause(); a deterministic blocked-cleanup regression passes.
-- Native Windows validation is pending the new hosted matrix run; preserve
-  that distinction until its actual result is available.
+- Hosted matrix run **38047756535 SUCCESS** for `c804699`: Ubuntu and Windows
+  installation, Ruff and offline tests passed. Native Windows: **242 passed,
+  1 skipped, 8 deselected** (only POSIX fork hard-exit test skipped). Results
+  archived in `docs/validation/windows-ci-validation.json`.
 
 ## 2026-10-10 — Web model configuration shipped
 

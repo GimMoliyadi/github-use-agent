@@ -1,0 +1,138 @@
+{
+  "conclusion": "success",
+  "headSha": "c804699ef7a98b4164843263523277f0d32133f6",
+  "jobs": [
+    {
+      "completedAt": "2026-10-10T11:15:38Z",
+      "conclusion": "success",
+      "databaseId": 114200621256,
+      "name": "test (ubuntu-latest)",
+      "startedAt": "2026-10-10T11:15:20Z",
+      "status": "completed",
+      "steps": [
+        {
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Run astral-sh/setup-uv@v6",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Lint",
+          "number": 5,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Offline deterministic tests",
+          "number": 6,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Run astral-sh/setup-uv@v6",
+          "number": 11,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 12,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/GimMoliyadi/github-use-agent/actions/runs/38047756535/job/114200621256"
+    },
+    {
+      "completedAt": "2026-10-10T11:16:12Z",
+      "conclusion": "success",
+      "databaseId": 114200621427,
+      "name": "test (windows-latest)",
+      "startedAt": "2026-10-10T11:15:20Z",
+      "status": "completed",
+      "steps": [
+        {
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Run astral-sh/setup-uv@v6",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Lint",
+          "number": 5,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Offline deterministic tests",
+          "number": 6,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Run astral-sh/setup-uv@v6",
+          "number": 11,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 12,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/GimMoliyadi/github-use-agent/actions/runs/38047756535/job/114200621427"
+    }
+  ],
+  "status": "completed",
+  "url": "https://github.com/GimMoliyadi/github-use-agent/actions/runs/38047756535"
+}

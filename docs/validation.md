@@ -6,7 +6,7 @@
 
 离线 Linux 套件 **243 passed，8 deselected**，Ruff 通过。新增 MockTransport 验证 400/403/404/422/429/500 状态提示、401 脱敏、可选能力通用 400 降级、完整 endpoint 拒绝。实际 Chromium 的桌面/手机设置与研究流程共 **4 passed，40 deselected**；设置流程验证 HTTP 401 及提示文字，不暴露密钥。没有调用用户真实中转站。
 
-已添加 Windows 原生文件锁与设置保存兼容处理；CI 同时运行 Ubuntu 和 Windows，Windows 实际结果需以本次托管工作流为准。强制 `fork` 子进程退出用例只在支持 fork 的系统运行；Windows 保留一般暂停/重启恢复测试。POSIX 密钥文件权限为 0600，Windows 继承数据目录的 NTFS 权限。
+已添加 Windows 原生文件锁与设置保存兼容处理；[本次 CI 38047756535](https://github.com/GimMoliyadi/github-use-agent/actions/runs/38047756535) 在 `c804699` 上 Ubuntu 和 Windows 均成功，原生 Windows **242 passed，1 skipped，8 deselected**，安装与 Ruff 通过；[实际结果 JSON](validation/windows-ci-validation.json)。强制 `fork` 子进程退出用例只在支持 fork 的系统运行；Windows 保留一般暂停/重启恢复测试。POSIX 密钥文件权限为 0600，Windows 继承数据目录的 NTFS 权限。
 
 ## 新增 Web 模型配置验收
 
