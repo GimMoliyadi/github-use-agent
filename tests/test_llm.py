@@ -142,13 +142,28 @@ def test_probe_semantics_and_schema_capabilities(monkeypatch):
     assert capability.tested and model.usage.llm_calls == 3
 
 
-def test_probe_checks_semantics_not_only_http_success(monkeypatch):
-    model, _, _ = gateway(monkeypatch, [response("Sorry, unrelated output")])
+@pytest.mark.parametrize("text", ["", "   "])
+def test_probe_rejects_empty_chat_even_on_http_success(monkeypatch, text):
+    model, _, _ = gateway(monkeypatch, [response(text)])
     capability = model.probe()
     assert not capability.chat
     assert capability.tested
+    assert capability.selected_output == "" and model.usage.llm_calls == 1
+    assert "not tested" in " ".join(capability.details)
     with pytest.raises(ModelError, match="capability test failed"):
         model.decide({})
+
+
+@pytest.mark.parametrize("text", ["capability-ok.", "连接正常", "Sure! capability-ok"])
+def test_chat_probe_accepts_usable_text_without_exact_echo(monkeypatch, text):
+    model, _, _ = gateway(monkeypatch, [
+        response(text), response("No tool"), response("No schema"),
+    ])
+    capability = model.probe()
+    assert capability.chat and capability.tested
+    assert capability.selected_output == "json_text"
+    assert not capability.tool_calling and not capability.structured_output
+    assert model.usage.llm_calls == 3
 
 
 def test_unsupported_capabilities_fall_back_to_json(monkeypatch):

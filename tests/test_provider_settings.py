@@ -140,7 +140,10 @@ def test_configuration_change_rejected_while_worker_active(tmp_path):
         service.close()
 
 
-def install_mock_relay(monkeypatch, unsupported=False, unauthorized=False, failure_status=None):
+def install_mock_relay(
+    monkeypatch, unsupported=False, unauthorized=False, failure_status=None,
+    chat_text="capability-ok",
+):
     """Actual ChatOpenAI/OpenAI SDK, with every request intercepted locally."""
     requests = []
 
@@ -158,7 +161,7 @@ def install_mock_relay(monkeypatch, unsupported=False, unauthorized=False, failu
             feature = "tools" if body.get("tools") else "json_schema"
             message = KEY if unsupported == "generic" else feature + " unsupported"
             return httpx.Response(400, json={"error": {"message": message}})
-        message = {"role": "assistant", "content": "capability-ok"}
+        message = {"role": "assistant", "content": chat_text}
         reason = "stop"
         if body.get("tools"):
             name = body["tools"][0]["function"]["name"]
@@ -186,8 +189,11 @@ def install_mock_relay(monkeypatch, unsupported=False, unauthorized=False, failu
 
 
 @pytest.mark.parametrize("unsupported", [False, True, "generic"])
-def test_probe_real_adapter_with_mock_transport_does_not_save(tmp_path, monkeypatch, unsupported):
-    requests = install_mock_relay(monkeypatch, unsupported=unsupported)
+@pytest.mark.parametrize("chat_text", ["capability-ok", "连接正常！"])
+def test_probe_real_adapter_with_mock_transport_does_not_save(
+    tmp_path, monkeypatch, unsupported, chat_text,
+):
+    requests = install_mock_relay(monkeypatch, unsupported=unsupported, chat_text=chat_text)
     with TestClient(create_app(Settings(_env_file=None, data_dir=tmp_path))) as client:
         response = client.post("/api/model/probe", json=PAYLOAD)
         assert response.status_code == 200, response.text
@@ -226,7 +232,7 @@ def test_probe_failure_has_safe_http_diagnostic(tmp_path, monkeypatch, status):
 
 @pytest.mark.parametrize("suffix", ["/chat/completions", "/responses"])
 def test_full_endpoint_rejected_before_any_model_request(tmp_path, monkeypatch, suffix):
-    requests = install_mock_relay(monkeypatch)
+    requests = install_mock_relay(monkeypatch, chat_text="连接正常！")
     with TestClient(create_app(Settings(_env_file=None, data_dir=tmp_path))) as client:
         response = client.post("/api/model/probe", json={
             **PAYLOAD, "base_url": PAYLOAD["base_url"] + suffix,
@@ -243,7 +249,7 @@ def test_browser_configure_probe_save_and_no_key_storage(tmp_path, monkeypatch, 
     import uvicorn
     from playwright.sync_api import expect, sync_playwright
 
-    requests = install_mock_relay(monkeypatch)
+    requests = install_mock_relay(monkeypatch, chat_text="连接正常！")
     server = uvicorn.Server(uvicorn.Config(
         create_app(Settings(_env_file=None, data_dir=tmp_path)), log_level="error",
     ))
@@ -295,6 +301,13 @@ def test_browser_configure_probe_save_and_no_key_storage(tmp_path, monkeypatch, 
                 expect(page.locator("#model-result")).to_contain_text("HTTP 401", timeout=20000)
                 expect(page.locator("#model-result")).to_contain_text("API Key")
                 assert KEY not in page.locator("#model-result").inner_text()
+                empty_requests = install_mock_relay(monkeypatch, chat_text="")
+                page.locator("#model-probe").click()
+                expect(page.locator("#model-result")).to_contain_text("工具调用：未测试")
+                expect(page.locator("#model-result")).to_contain_text("JSON Schema：未测试")
+                expect(page.locator("#model-result")).to_contain_text("没有可用的聊天文本")
+                assert len(empty_requests) == 1
+                assert "采用 json_text" not in page.locator("#model-result").inner_text()
             finally:
                 browser.close()
     finally:

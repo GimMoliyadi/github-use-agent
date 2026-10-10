@@ -2,6 +2,12 @@
 
 日期：2026-10-10（UTC）。依赖安装与网络阻塞已经解决。本文区分真实框架执行、真实 GitHub 数据、模拟模型和未完成的外部交付。最终离线、全新 CLI/UI、重建 Docker 镜像验收均已通过，实际记录已归档。
 
+## 聊天检测误判与未测试状态修复
+
+用户截图显示聊天一次调用后失败，后两项没有执行却标为不支持。已取消任意字符串的逐字回显要求，聊天必须返回非空文本；空文本仍失败，输出模式保持未选择，工具和 JSON Schema 显示未测试。可选协议输出和研究 JSON 仍严格校验。
+
+Linux 离线 **250 passed，8 deselected**，Ruff 通过；实际 Chromium 桌面/手机设置和研究流程 **4 passed，43 deselected**。新增非逐字回复、空文本、一轮结束与 UI 未测试提示检查；使用实际 SDK 加 MockTransport，未实测用户中转站。此补丁自己的 Windows/Ubuntu 托管 CI 需另行确认。
+
 ## 模型检测诊断与 Windows 兼容修复
 
 离线 Linux 套件 **243 passed，8 deselected**，Ruff 通过。新增 MockTransport 验证 400/403/404/422/429/500 状态提示、401 脱敏、可选能力通用 400 降级、完整 endpoint 拒绝。实际 Chromium 的桌面/手机设置与研究流程共 **4 passed，40 deselected**；设置流程验证 HTTP 401 及提示文字，不暴露密钥。没有调用用户真实中转站。

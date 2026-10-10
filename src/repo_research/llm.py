@@ -281,9 +281,18 @@ class ModelGateway:
             [HumanMessage(content="Reply with exactly capability-ok and no other text.")],
             output_limit=512,
         )
-        report.chat = _text(response).strip() == "capability-ok"
+        # Chat connectivity requires usable assistant text, not exact compliance
+        # with an arbitrary echo instruction. Research JSON is validated separately.
+        report.chat = bool(_text(response).strip())
         if not report.chat:
-            report.details.append("Chat probe returned an unexpected value; semantic test failed.")
+            report.selected_output = ""
+            metadata = getattr(response, "response_metadata", {}) or {}
+            reason = metadata.get("finish_reason")
+            reason = reason if reason in {"length", "stop", "content_filter"} else "unknown"
+            report.details.append(
+                f"Chat returned no usable assistant text (finish_reason={reason}); "
+                "tool calling and JSON Schema were not tested."
+            )
             report.tested = True
             return report
         messages = [HumanMessage(content="Return echo=capability-ok using the supplied schema.")]

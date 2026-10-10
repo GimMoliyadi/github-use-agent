@@ -1,5 +1,21 @@
 # Progress
 
+## 2026-10-10 — avoid false chat-probe failures
+
+- User screenshot showed chat failed after one call; optional feature checks
+  had never run but were misleadingly labeled unsupported.
+- Chat connectivity now requires usable nonempty assistant text, rather than
+  exact `capability-ok` echo. Empty text still fails and exposes an allowlisted
+  finish reason; research and optional feature outputs retain schema checks.
+- Failed chat now leaves output mode unselected; UI labels tools/JSON Schema
+  untested, and optional tests that fail are labeled not passed.
+- Linux offline: **250 passed, 8 deselected**, Ruff passed; Chromium desktop
+  and mobile settings/research flows: **4 passed, 43 deselected**. Browser and
+  actual ChatOpenAI/MockTransport checks exercise nonliteral valid chat, empty
+  text, optional fallback and HTTP 401. No actual user LLM request was made.
+- Native Windows/Ubuntu hosted validation for this patch is pending its own
+  CI run; previous Windows success covers the previous code only.
+
 ## 2026-10-10 — model diagnostics and native Windows compatibility
 
 - Probe errors now show the failing stage, sanitized upstream HTTP status and

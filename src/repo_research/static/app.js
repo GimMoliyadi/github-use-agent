@@ -80,11 +80,14 @@ async function applyModelSettings(probe) {
     const response = await jsonApi(probe ? "/api/model/probe" : "/api/model", { method: probe ? "POST" : "PUT", body: JSON.stringify(configuration) });
     if (probe) {
       const capability = response.capabilities;
-      result.textContent = capability.mode === "mock" ? "Mock 模式：未调用真实模型 API。" : `聊天：${capability.chat ? "通过" : "失败"}；工具调用：${capability.tool_calling ? "支持" : "不支持"}；JSON Schema：${capability.structured_output ? "支持" : "不支持"}。采用 ${capability.selected_output || "未选择"}。本次模型调用 ${response.usage.llm_calls} 次。检测不会自动保存，确认后点击保存并应用。`;
+      const tools = !capability.chat ? "未测试" : capability.tool_calling ? "支持" : "未通过";
+      const schema = !capability.chat ? "未测试" : capability.structured_output ? "支持" : "未通过";
+      const output = capability.chat ? `采用 ${capability.selected_output}。` : "尚未选择输出方式。";
+      result.textContent = capability.mode === "mock" ? "Mock 模式：未调用真实模型 API。" : `聊天：${capability.chat ? "通过" : "失败"}；工具调用：${tools}；JSON Schema：${schema}。${output}本次模型调用 ${response.usage.llm_calls} 次。检测不会自动保存，确认后点击保存并应用。`;
       if (capability.mode !== "mock") {
         if (!capability.chat) {
           result.className = "notice error";
-          result.textContent += " 接口已返回响应，但聊天回显验证未通过；请检查模型是否返回了可用文本。";
+          result.textContent += " 接口已返回响应，但没有可用的聊天文本；可能输出被截断、过滤或接口格式不兼容，不能据此判断密钥无效。";
         } else if (!capability.tool_calling || !capability.structured_output) {
           result.textContent += " 聊天连接可用，缺少的可选能力将使用兼容输出方式。";
         }

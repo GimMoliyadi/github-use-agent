@@ -5,6 +5,8 @@
 - `src/repo_research/models.py`: shared Pydantic contracts. Do not change contracts without coordinating consumers.
 - `github.py`, `github_cache.py`: GitHub REST access, SHA pinning, bounded tree traversal and immutable blob cache.
 - `llm.py`: OpenAI-compatible LangChain adapter and explicitly marked deterministic mock.
+  Chat probing validates nonempty assistant text, not an exact echo. Optional
+  features require schema-valid responses; if chat fails they are untested.
 - `agent.py`, `tools.py`, `report.py`: StateGraph, read-only exploration, program-generated evidence URLs and validation.
 - `storage.py`, `service.py`: SQLite task metadata, LangGraph checkpoints, worker recovery and progress.
 - `process_lock.py`: single-owner lock using POSIX flock or Windows msvcrt; keep nonblocking and releasable.
