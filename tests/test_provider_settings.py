@@ -40,7 +40,8 @@ def test_save_apply_keep_key_and_restart_without_secret_response(tmp_path):
         assert KEY not in client.get("/api/tasks").text
     path = tmp_path / "model-settings.json"
     assert json.loads(path.read_text())["api_key"] == KEY
-    assert path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert path.stat().st_mode & 0o777 == 0o600
     with TestClient(create_app(settings)) as client:
         assert client.get("/api/model").json()["model"] == "new-model"
         assert client.get("/api/config").json()["mode"] == "live"
@@ -139,7 +140,7 @@ def test_configuration_change_rejected_while_worker_active(tmp_path):
         service.close()
 
 
-def install_mock_relay(monkeypatch, unsupported=False, unauthorized=False):
+def install_mock_relay(monkeypatch, unsupported=False, unauthorized=False, failure_status=None):
     """Actual ChatOpenAI/OpenAI SDK, with every request intercepted locally."""
     requests = []
 
@@ -151,9 +152,12 @@ def install_mock_relay(monkeypatch, unsupported=False, unauthorized=False):
         assert body["model"] == "test-model"
         if unauthorized:
             return httpx.Response(401, json={"error": {"message": KEY}})
+        if failure_status:
+            return httpx.Response(failure_status, json={"error": {"message": KEY}})
         if unsupported and (body.get("tools") or body.get("response_format")):
             feature = "tools" if body.get("tools") else "json_schema"
-            return httpx.Response(400, json={"error": {"message": feature + " unsupported"}})
+            message = KEY if unsupported == "generic" else feature + " unsupported"
+            return httpx.Response(400, json={"error": {"message": message}})
         message = {"role": "assistant", "content": "capability-ok"}
         reason = "stop"
         if body.get("tools"):
@@ -181,7 +185,7 @@ def install_mock_relay(monkeypatch, unsupported=False, unauthorized=False):
     return requests
 
 
-@pytest.mark.parametrize("unsupported", [False, True])
+@pytest.mark.parametrize("unsupported", [False, True, "generic"])
 def test_probe_real_adapter_with_mock_transport_does_not_save(tmp_path, monkeypatch, unsupported):
     requests = install_mock_relay(monkeypatch, unsupported=unsupported)
     with TestClient(create_app(Settings(_env_file=None, data_dir=tmp_path))) as client:
@@ -189,8 +193,8 @@ def test_probe_real_adapter_with_mock_transport_does_not_save(tmp_path, monkeypa
         assert response.status_code == 200, response.text
         capabilities = response.json()["capabilities"]
         assert capabilities["chat"] and capabilities["tested"]
-        assert capabilities["tool_calling"] is not unsupported
-        assert capabilities["structured_output"] is not unsupported
+        assert capabilities["tool_calling"] == (not unsupported)
+        assert capabilities["structured_output"] == (not unsupported)
         assert capabilities["selected_output"] == ("json_text" if unsupported else "tools")
         assert len(requests) == response.json()["usage"]["llm_calls"] == 3
         assert KEY not in response.text
@@ -206,6 +210,30 @@ def test_probe_error_is_sanitized_and_missing_fields_fail_without_http(tmp_path,
         response = client.post("/api/model/probe", json=PAYLOAD)
         assert response.status_code == 502 and KEY not in response.text
         assert "authentication" in response.text
+        assert "HTTP 401" in response.text and "API Key" in response.text
+
+
+@pytest.mark.parametrize("status", [400, 403, 404, 422, 429, 500])
+def test_probe_failure_has_safe_http_diagnostic(tmp_path, monkeypatch, status):
+    install_mock_relay(monkeypatch, failure_status=status)
+    with TestClient(create_app(Settings(_env_file=None, data_dir=tmp_path))) as client:
+        response = client.post("/api/model/probe", json=PAYLOAD)
+        assert response.status_code == 502
+        assert f"HTTP {status}" in response.text
+        assert KEY not in response.text
+        assert "聊天检测失败" in response.text
+
+
+@pytest.mark.parametrize("suffix", ["/chat/completions", "/responses"])
+def test_full_endpoint_rejected_before_any_model_request(tmp_path, monkeypatch, suffix):
+    requests = install_mock_relay(monkeypatch)
+    with TestClient(create_app(Settings(_env_file=None, data_dir=tmp_path))) as client:
+        response = client.post("/api/model/probe", json={
+            **PAYLOAD, "base_url": PAYLOAD["base_url"] + suffix,
+        })
+        assert response.status_code == 422
+        assert "接口前缀" in response.text and not requests
+        assert KEY not in response.text
 
 
 @pytest.mark.browser
@@ -262,6 +290,11 @@ def test_browser_configure_probe_save_and_no_key_storage(tmp_path, monkeypatch, 
                     page.screenshot(
                         path=str(folder / f"model-settings-{width}.png"), full_page=True,
                     )
+                install_mock_relay(monkeypatch, unauthorized=True)
+                page.locator("#model-probe").click()
+                expect(page.locator("#model-result")).to_contain_text("HTTP 401", timeout=20000)
+                expect(page.locator("#model-result")).to_contain_text("API Key")
+                assert KEY not in page.locator("#model-result").inner_text()
             finally:
                 browser.close()
     finally:

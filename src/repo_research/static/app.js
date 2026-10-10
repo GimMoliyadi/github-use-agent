@@ -81,6 +81,15 @@ async function applyModelSettings(probe) {
     if (probe) {
       const capability = response.capabilities;
       result.textContent = capability.mode === "mock" ? "Mock 模式：未调用真实模型 API。" : `聊天：${capability.chat ? "通过" : "失败"}；工具调用：${capability.tool_calling ? "支持" : "不支持"}；JSON Schema：${capability.structured_output ? "支持" : "不支持"}。采用 ${capability.selected_output || "未选择"}。本次模型调用 ${response.usage.llm_calls} 次。检测不会自动保存，确认后点击保存并应用。`;
+      if (capability.mode !== "mock") {
+        if (!capability.chat) {
+          result.className = "notice error";
+          result.textContent += " 接口已返回响应，但聊天回显验证未通过；请检查模型是否返回了可用文本。";
+        } else if (!capability.tool_calling || !capability.structured_output) {
+          result.textContent += " 聊天连接可用，缺少的可选能力将使用兼容输出方式。";
+        }
+        if (capability.details?.length) result.textContent += ` 诊断：${capability.details.join("；")}`;
+      }
     } else {
       $("model-api-key").value = "";
       await connect();

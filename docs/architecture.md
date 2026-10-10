@@ -41,7 +41,7 @@ RepoLens 使用一个 LangGraph 研究 Agent。研究目标、模型决策、工
 
 `storage.py` 保存任务元信息和供 UI 查询的进度快照；图检查点保存精确执行位置。资源计数账本独立记录发出请求前的 API 次数及模型 Token/费用预留，用于强制中断后的保守恢复。初始化解析出的 Commit 在目录请求前独立落盘，强制终止后的重试不会切换到更新的分支版本。SQLite 使用短事务、WAL 和 busy timeout。
 
-`service.py` 通过有限线程池运行任务，工作请求不阻塞 HTTP。默认两个工作线程，最多四个活动/排队任务。`fcntl` 文件锁限制同一目录的单服务进程，防止另一进程启动时误标记正在运行的任务。服务重启将未完成任务标为 interrupted，用户通过 UI 或 `repo-research resume TASK_ID` 明确恢复；不会自动发起可能付费的工作。
+`service.py` 通过有限线程池运行任务，工作请求不阻塞 HTTP。默认两个工作线程，最多四个活动/排队任务。跨平台文件锁（POSIX `fcntl`，Windows `msvcrt`）限制同一目录的单服务进程，防止另一进程启动时误标记正在运行的任务。服务重启将未完成任务标为 interrupted，用户通过 UI 或 `repo-research resume TASK_ID` 明确恢复；不会自动发起可能付费的工作。
 
 正常的节点边界暂停由 LangGraph checkpoint 保证继续位置；强制杀进程可能发生在网络请求发出后、响应落盘前。预留账本保守保留这次支出，但外部提供商可能已收费且恢复时再次请求，因此不承诺付费 HTTP 的 exactly-once。用户应结合中转站账单核对实际费用。
 

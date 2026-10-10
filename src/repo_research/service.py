@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import logging
@@ -14,6 +13,7 @@ from typing import Any
 from .config import Settings
 from .github import parse_repo_url
 from .models import Budget, ResearchRequest
+from .process_lock import ProcessLock
 from .provider_settings import (
     ModelConfiguration,
     candidate_settings,
@@ -64,12 +64,7 @@ class ResearchService:
             raise ValueError("Use between one and four research workers.")
         self.settings = load_model_settings(settings)
         self.store = TaskStore(settings.data_dir)
-        self._owner_lock = (self.store.data_dir / "service.lock").open("a")
-        try:
-            fcntl.flock(self._owner_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            self._owner_lock.close()
-            raise ValueError("A research service already owns this data directory.") from None
+        self._owner_lock = ProcessLock(self.store.data_dir / "service.lock")
         self.store.mark_interrupted()
         self.client_factory = client_factory
         self.model_factory = model_factory
@@ -267,5 +262,4 @@ class ResearchService:
         # Each configured HTTP request has a finite timeout. Graceful shutdown
         # waits for workers to reach graph boundaries and flush checkpoints.
         self._executor.shutdown(wait=True, cancel_futures=False)
-        fcntl.flock(self._owner_lock.fileno(), fcntl.LOCK_UN)
         self._owner_lock.close()

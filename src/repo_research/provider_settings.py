@@ -43,6 +43,8 @@ class ModelConfiguration(BaseModel):
             valid = False
         if not valid:
             raise ValueError("Base URL must be an HTTP(S) URL without credentials or query.")
+        if parsed.path.rstrip("/").endswith(("/chat/completions", "/responses")):
+            raise ValueError("Base URL 请填接口前缀（通常以 /v1 结尾），不要填 /chat/completions。")
         return value.rstrip("/")
 
 
@@ -89,7 +91,8 @@ def save_model_settings(settings: Settings) -> None:
     descriptor, temporary = tempfile.mkstemp(prefix=".model-settings-", dir=settings.data_dir)
     try:
         with os.fdopen(descriptor, "w") as handle:
-            os.fchmod(handle.fileno(), 0o600)
+            if hasattr(os, "fchmod"):
+                os.fchmod(handle.fileno(), 0o600)
             json.dump(payload, handle, ensure_ascii=False)
             handle.flush()
             os.fsync(handle.fileno())

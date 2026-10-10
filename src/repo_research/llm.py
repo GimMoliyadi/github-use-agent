@@ -31,6 +31,12 @@ from repo_research.models import (
 class ModelError(RuntimeError):
     """A sanitized model error; provider exception bodies must never escape."""
 
+    def __init__(self, message: str, *, http_status=None, stage="", code=""):
+        super().__init__(message)
+        self.http_status = http_status if isinstance(http_status, int) else None
+        self.stage = stage
+        self.code = code
+
 
 class BudgetExceeded(ModelError):
     """The next model call cannot fit the persisted research budget."""
@@ -227,7 +233,11 @@ class ModelGateway:
                     raise _UnsupportedFeature(feature) from None
                 if _retryable(exc) and attempt < self.settings.llm_max_retries:
                     continue
-                raise ModelError(f"LLM request failed: {_error_name(exc)}.") from None
+                raise ModelError(
+                    f"LLM request failed: {_error_name(exc)}.",
+                    http_status=getattr(exc, "status_code", None), stage=feature,
+                    code=_error_name(exc),
+                ) from None
             raw = response.get("raw") if isinstance(response, dict) else response
             metadata = getattr(raw, "usage_metadata", None) or {}
             input_count, output_count = metadata.get("input_tokens"), metadata.get("output_tokens")
@@ -269,7 +279,7 @@ class ModelGateway:
         response = self._invoke(
             lambda cap: self._client.bind(max_tokens=cap),
             [HumanMessage(content="Reply with exactly capability-ok and no other text.")],
-            output_limit=96,
+            output_limit=512,
         )
         report.chat = _text(response).strip() == "capability-ok"
         if not report.chat:
@@ -290,6 +300,12 @@ class ModelGateway:
             report.tool_calling = _validate_tool(result, _CapabilityEcho).echo == "capability-ok"
         except (_UnsupportedFeature, _InvalidOutput):
             report.details.append("Tool probe unsupported or semantically invalid.")
+        except ModelError as error:
+            if error.http_status not in {400, 404, 422, 501}:
+                raise
+            report.details.append(
+                f"Tool probe rejected (HTTP {error.http_status}); using fallback."
+            )
         try:
             result = self._invoke(
                 lambda cap: self._client.with_structured_output(
@@ -308,6 +324,12 @@ class ModelGateway:
                 report.details.append("Adapter substituted tool calling for the JSON-schema test.")
         except (_UnsupportedFeature, _InvalidOutput):
             report.details.append("JSON-schema probe unsupported or semantically invalid.")
+        except ModelError as error:
+            if error.http_status not in {400, 404, 422, 501}:
+                raise
+            report.details.append(
+                f"JSON-schema probe rejected (HTTP {error.http_status}); using fallback."
+            )
         report.selected_output = self._select_output()
         report.tested = True
         report.details.append("Costs unknown unless both per-million token prices are configured.")

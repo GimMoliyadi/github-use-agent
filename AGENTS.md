@@ -7,9 +7,10 @@
 - `llm.py`: OpenAI-compatible LangChain adapter and explicitly marked deterministic mock.
 - `agent.py`, `tools.py`, `report.py`: StateGraph, read-only exploration, program-generated evidence URLs and validation.
 - `storage.py`, `service.py`: SQLite task metadata, LangGraph checkpoints, worker recovery and progress.
+- `process_lock.py`: single-owner lock using POSIX flock or Windows msvcrt; keep nonblocking and releasable.
 - `usage-ledger.sqlite3` inside DATA_DIR: synchronous request reservations and durable initial Commit pin; preserve it with checkpoints and task metadata. Model gateway `.on_usage` and GitHub client `.on_request` are called before HTTP; keep that ordering.
 - `web.py`, `static/`: FastAPI endpoints and responsive UI.
-- `provider_settings.py`: UI model configuration, atomic server-only `0600` persistence.
+- `provider_settings.py`: UI model configuration, atomic server-only persistence (POSIX `0600`; Windows inherits directory ACLs).
   `DATA_DIR/model-settings.json` contains credentials: never expose or commit it.
   Saved settings override environment model values; explicit CLI `--mode` disables
   loading saved values. `load_saved_model=False` is required for forced-Mock demos.

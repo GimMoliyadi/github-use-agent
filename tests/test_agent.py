@@ -384,7 +384,7 @@ def test_model_adapter_is_reused_and_closed_after_completed_run(tmp_path):
     assert adapters[0].closed is True
 
 
-@pytest.mark.skipif(os.name != "posix", reason="The self-hosted worker uses POSIX locks")
+@pytest.mark.skipif("fork" not in multiprocessing.get_all_start_methods(), reason="POSIX fork")
 def test_real_process_exit_preserves_sqlite_checkpoint_and_request_reservation(tmp_path):
     """Actual worker process exit; all GitHub/LLM interactions remain mocked."""
     api = FixtureAPI()

@@ -93,7 +93,28 @@ def create_app(
             from .llm import ModelError
 
             if isinstance(exc, ModelError):
-                raise HTTPException(status_code=502, detail=f"模型检测失败：{exc}") from None
+                hints = {
+                    400: "中转站拒绝请求，请核对模型名称和请求参数兼容性。",
+                    401: "认证失败，请核对该中转站的 API Key。",
+                    403: "访问被拒绝，请核对密钥的模型权限和服务商访问限制。",
+                    404: "接口或模型不存在，请核对 Base URL 前缀和模型名称。",
+                    422: "请求格式不兼容，请核对中转站的聊天补全协议。",
+                    429: "请求受限，可能是频率、配额或余额限制，请查看中转站控制台。",
+                }
+                hint = hints.get(exc.http_status, "请核对中转站配置及服务状态。")
+                if exc.code == "timeout":
+                    hint = "请求超时，请检查网络或调整 LLM_TIMEOUT。"
+                elif exc.code == "connection failure":
+                    hint = "连接失败，请检查地址、网络、代理和证书。"
+                elif exc.http_status and exc.http_status >= 500:
+                    hint = "中转站服务异常，请稍后重试或联系服务商。"
+                status = f"HTTP {exc.http_status}，" if exc.http_status else ""
+                stages = {"chat": "聊天", "tools": "工具调用", "json_schema": "结构化输出"}
+                stage = stages.get(exc.stage, "模型")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"{stage}检测失败（{status}{exc}）。{hint}",
+                ) from None
             if isinstance(exc, GitHubError):
                 if exc.code in ("invalid_url", "invalid_ref", "invalid_path"):
                     raise HTTPException(status_code=400, detail=str(exc)) from None

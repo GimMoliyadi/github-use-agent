@@ -24,6 +24,21 @@ cp .env.example .env
 uv run repo-research serve --host 127.0.0.1 --port 8000
 ```
 
+Windows 原生 PowerShell（已安装 Git；uv 可自动获取 Python）：
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+# 安装完成后重新打开 PowerShell，再执行：
+git clone https://github.com/GimMoliyadi/github-use-agent.git
+cd github-use-agent
+uv sync --frozen --extra dev
+Copy-Item .env.example .env
+uv run repo-research serve --host 127.0.0.1 --port 8000
+```
+
+已有目录更新时，先 Ctrl+C 停止服务，执行 `git pull --ff-only` 和
+`uv sync --frozen --extra dev`，再运行上述启动命令；保留 `.env` 和 `data/`。
+
 打开 <http://127.0.0.1:8000>。填写 `https://github.com/pypa/sampleproject`，提出“研究项目的 Python 入口、打包配置与模块关系”，点击开始。页面显示主要步骤、资源预算、带永久源码链接的报告和历史任务；手机与电脑均可使用。
 
 URL 必须是仓库根地址；分支、标签或 Commit 写在单独的 Ref 输入框。任务初始化后解析为完整 Commit SHA，此后读文件和引用都绑定该版本。
@@ -42,9 +57,13 @@ uv run repo-research resume TASK_ID --output data/resumed-report.md
 
 推荐直接在 Web 页顶部点击 **“模型配置”**，填写 Base URL、API 密钥和模型名称，选择“真实模型”。点击“检测连接能力”可验证聊天、工具调用和 JSON Schema，然后点击“保存并应用”。保存后无需重启，新研究立即使用该配置。
 
-密钥不会回显或写入浏览器存储、研究历史；配置保存到服务端 `DATA_DIR/model-settings.json`，权限为 `0600`，重启后自动恢复。该文件包含明文密钥，应随服务器私有数据保护，已被 Git 和 Docker 构建忽略。此界面管理的是当前服务的共享模型配置；公开服务仍需设置 `APP_ACCESS_TOKEN`。有任务运行时先暂停或完成，再修改配置。保留原 Base URL 时密钥留空可复用，修改 Base URL 必须填写新密钥。
+密钥不会回显或写入浏览器存储、研究历史；配置保存到服务端 `DATA_DIR/model-settings.json`，POSIX 权限为 `0600`，Windows 继承数据目录的 NTFS 权限，重启后自动恢复。该文件包含明文密钥，应随服务器私有数据保护，已被 Git 和 Docker 构建忽略。此界面管理的是当前服务的共享模型配置；公开服务仍需设置 `APP_ACCESS_TOKEN`。有任务运行时先暂停或完成，再修改配置。保留原 Base URL 时密钥留空可复用，修改 Base URL 必须填写新密钥。
 
 ![Web 模型配置入口（能力检测使用 MockTransport 验证）](docs/screenshots/model-settings-1440.png)
+
+检测不成功时查看页面显示的阶段和 HTTP 状态：401/403 对应认证或权限，404 需核对接口前缀与模型名称，429 需核对配额或限流，5xx 对应服务端异常。连接失败或超时应检查运行服务机器的网络、代理及证书。Base URL 填服务商提供的接口前缀（例如 `https://relay.example/v1`），不要填完整 `/chat/completions` 或 `/responses`；模型名称必须是中转站实际支持的模型 ID。
+
+聊天通过而工具调用、JSON Schema 不支持时，可选择自动兼容或 JSON 文本模式；这表示聊天连接可用，后续生成仍需满足 JSON 校验。检测会显示额外诊断，但不会展示服务商原始错误正文，以免泄露凭据。聊天回显验证失败表示已收到响应但未通过语义验证，需要确认模型输出可用文本。
 
 CLI 和环境变量方式也保留。保存的 Web 配置优先于环境变量中的模型配置；CLI 默认读取它，显式 `--mode mock` 可忽略已保存配置。模型检测按钮会发送少量真实请求，不会自动保存，Mock 模式不访问模型 API。
 

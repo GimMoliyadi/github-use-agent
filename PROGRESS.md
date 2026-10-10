@@ -1,5 +1,21 @@
 # Progress
 
+## 2026-10-10 — model diagnostics and native Windows compatibility
+
+- Probe errors now show the failing stage, sanitized upstream HTTP status and
+  actionable hints; the browser also exposes safe capability diagnostics.
+- Optional feature-only 400/404/422/501 rejections after successful chat can fall
+  back to JSON text; authentication, rate limits and outages remain failures.
+- Reject full completion/Responses endpoints as Base URL; increased short chat
+  probe output allowance for model compatibility. Model ID remains required.
+- Replaced unconditional POSIX lock import with POSIX/Windows nonblocking locks;
+  Windows settings writes no longer require os.fchmod. Added native Windows CI.
+- Local Linux offline: **242 passed, 8 deselected**, Ruff passed. Chromium
+  desktop/mobile settings tests verify HTTP 401 hints without exposing the key.
+  No actual user relay credentials or paid model requests were used.
+- Native Windows validation is pending the new hosted matrix run; preserve
+  that distinction until its actual result is available.
+
 ## 2026-10-10 — Web model configuration shipped
 
 - Added top-bar “模型配置”: Base URL, password-masked API key, model ID,
