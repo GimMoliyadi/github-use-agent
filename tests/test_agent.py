@@ -6,6 +6,8 @@ hashes; these tests do not claim to have contacted GitHub or a paid LLM.
 
 import base64
 import hashlib
+import multiprocessing
+import os
 import threading
 
 import httpx
@@ -14,7 +16,7 @@ import pytest
 from repo_research.agent import ResearchRunner, effective_budget
 from repo_research.config import Settings
 from repo_research.github import GitHubClient
-from repo_research.llm import MockModel, ModelError
+from repo_research.llm import BudgetExceeded, MockModel, ModelError
 from repo_research.models import Budget, Decision, ResearchRequest, ToolAction
 
 COMMIT = "a" * 40
@@ -168,7 +170,7 @@ def test_iteration_budget_completes_with_partial_evidence(tmp_path):
     assert result["status"] == "completed"
     assert result["stop_reason"] == "iteration_budget"
     assert result["usage"]["iterations"] == 1
-    assert "iteration_budget" in result["report_markdown"]
+    assert any("iteration_budget" in limitation for limitation in result["report"]["limitations"])
     assert_valid_citations(result, api)
 
 
@@ -346,3 +348,76 @@ def test_retry_cannot_exceed_exploration_iteration_budget(tmp_path):
     assert result["stop_reason"] == "iteration_budget"
     assert result["usage"]["iterations"] == 1
     assert result["usage"]["api_requests"] == interrupted["usage"]["api_requests"]
+
+
+def test_report_model_budget_exhaustion_keeps_verified_source_report(tmp_path):
+    api = FixtureAPI()
+
+    class ExhaustedReportModel(MockModel):
+        def write_report(self, context):
+            raise BudgetExceeded("LLM call budget exhausted.")
+
+    result = execute(runner(tmp_path, api, model_factory=ExhaustedReportModel),
+                     request(budget=Budget(max_iterations=1)))
+    assert result["status"] == "completed"
+    assert "模型预算耗尽" in result["report_markdown"]
+    assert any(claim["category"] == "unknown" for claim in result["report"]["claims"])
+    assert_valid_citations(result, api)
+
+
+def test_model_adapter_is_reused_and_closed_after_completed_run(tmp_path):
+    api = FixtureAPI()
+    adapters = []
+
+    class TrackedModel(MockModel):
+        def __init__(self, *args):
+            super().__init__(*args)
+            self.closed = False
+            adapters.append(self)
+
+        def close(self):
+            self.closed = True
+
+    result = execute(runner(tmp_path, api, model_factory=TrackedModel), request())
+    assert result["status"] == "completed"
+    assert len(adapters) == 1
+    assert adapters[0].closed is True
+
+
+@pytest.mark.skipif(os.name != "posix", reason="The self-hosted worker uses POSIX locks")
+def test_real_process_exit_preserves_sqlite_checkpoint_and_request_reservation(tmp_path):
+    """Actual worker process exit; all GitHub/LLM interactions remain mocked."""
+    api = FixtureAPI()
+    research_request = request()
+
+    class ExitAfterReservation(MockModel):
+        def decide(self, context):
+            self.usage.llm_calls += 1
+            self.usage.reserved_tokens += 777
+            self.on_usage(self.usage)
+            os._exit(23)
+
+    def child_worker():
+        execute(runner(tmp_path, api, model_factory=ExitAfterReservation), research_request)
+
+    process = multiprocessing.get_context("fork").Process(target=child_worker)
+    process.start()
+    process.join(timeout=10)
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=2)
+        pytest.fail("Offline worker did not reach its deliberate process exit")
+    assert process.exitcode == 23
+
+    class FinishAfterRestart(MockModel):
+        def decide(self, context):
+            assert self.usage.llm_calls == 1
+            assert self.usage.reserved_tokens == 777
+            return Decision(action=ToolAction(kind="finish"), rationale="[MOCK] Recovered process")
+
+    result = execute(runner(tmp_path, api, model_factory=FinishAfterRestart),
+                     research_request, resume=True)
+    assert result["status"] == "completed"
+    assert result["repository"]["commit_sha"] == COMMIT
+    assert result["usage"]["llm_calls"] == 1
+    assert result["usage"]["reserved_tokens"] == 777

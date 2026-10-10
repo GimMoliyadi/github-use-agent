@@ -337,7 +337,18 @@ class GitHubClient:
     def tree(self, repo: RepositoryInfo, max_entries: int = 6000) -> TreeListing:
         if max_entries < 1:
             raise ValueError("Tree entry budget must be positive")
-        data = self._tree_data(repo, repo.tree_sha, True)
+        warnings: list[str] = []
+        try:
+            data = self._tree_data(repo, repo.tree_sha, True)
+        except GitHubError as error:
+            if error.code != "response_too_large":
+                raise
+            # A large recursive response is a traversal choice, not a fatal repo error.
+            warnings.append(
+                "Recursive tree response exceeded the safe byte budget; "
+                "using bounded hierarchical traversal. Git trees have no pagination API."
+            )
+            data = {"tree": [], "truncated": True}
         entries = sorted((self._entry(repo, item) for item in data["tree"]), key=_priority)
         if not data["truncated"]:
             return TreeListing(
@@ -345,10 +356,12 @@ class GitHubClient:
                 warnings=[f"Tree entry budget ({max_entries}) reached; listing is incomplete."]
                 if len(entries) > max_entries else [],
             )
-        warnings = [
-            "GitHub truncated its recursive tree response; using bounded hierarchical traversal. "
-            "Git trees have no pagination API."
-        ]
+        if not warnings:
+            warnings.append(
+                "GitHub truncated its recursive tree response; "
+                "using bounded hierarchical traversal. "
+                "Git trees have no pagination API."
+            )
         collected: dict[str, TreeEntry] = {}
         pending = deque([("", repo.tree_sha)])
         truncated = False

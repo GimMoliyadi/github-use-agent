@@ -127,6 +127,18 @@ def test_validation_and_invalid_github_url(client):
     ).status_code == 422
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"repo_url": 12345, "question": "研究模块"},
+        {"repo_url": "https://github.com/example/project", "question": {"text": "研究模块"}},
+        {"repo_url": "https://github.com/example/project", "question": "   "},
+    ],
+)
+def test_non_string_and_blank_requests_return_422(client, payload):
+    assert client.post("/api/tasks", json=payload).status_code == 422
+
+
 def test_api_authentication_and_config_secret_redaction(service, tmp_path):
     settings = Settings(
         _env_file=None,
@@ -167,7 +179,8 @@ def test_unexpected_exception_does_not_leak_secrets(client, service):
 
     service.start = fail
     response = client.post(
-        "/api/tasks", json={"repo_url": "https://github.com/example/project", "question": "分析入口"}
+        "/api/tasks",
+        json={"repo_url": "https://github.com/example/project", "question": "分析入口"},
     )
     assert response.status_code == 500
     assert "secret-api-key" not in response.text
@@ -186,7 +199,8 @@ def test_github_error_mapping(client, service, code, expected):
 
     service.start = fail
     response = client.post(
-        "/api/tasks", json={"repo_url": "https://github.com/example/project", "question": "分析入口"}
+        "/api/tasks",
+        json={"repo_url": "https://github.com/example/project", "question": "分析入口"},
     )
     assert response.status_code == expected
     if code == "rate_limit":
@@ -205,7 +219,9 @@ def test_browser_responsive_task_flow_and_untrusted_content(service, tmp_path, w
 
     injected = '<img src=x onerror="window.xss=1">'
     task = service.start(
-        ResearchRequest(repo_url="https://github.com/example/project", question="研究入口 " + injected)
+        ResearchRequest(
+            repo_url="https://github.com/example/project", question="研究入口 " + injected
+        )
     )
     service.tasks[task["id"]].update(
         status="completed",

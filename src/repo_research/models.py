@@ -44,8 +44,8 @@ class ResearchRequest(Contract):
 
     @field_validator("repo_url", "question", mode="before")
     @classmethod
-    def strip_text(cls, value: str) -> str:
-        return value.strip()
+    def strip_text(cls, value):
+        return value.strip() if isinstance(value, str) else value
 
 
 class RepositoryInfo(Contract):

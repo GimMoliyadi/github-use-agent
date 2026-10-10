@@ -2,8 +2,10 @@
 
 import json
 
+import httpx
 import pytest
 from langchain_core.messages import AIMessage
+from langchain_openai import ChatOpenAI as RealChatOpenAI
 
 from repo_research.config import Settings
 from repo_research.llm import BudgetExceeded, MockModel, ModelError, ModelGateway, make_model
@@ -33,9 +35,11 @@ class FakeClient:
     def bind_tools(self, schemas, **kwargs):
         self.mode = "tools"
         self.schema = schemas[0]
+        self.bindings.append({"max_tokens": kwargs["max_tokens"]})
         return self
 
     def with_structured_output(self, schema, **kwargs):
+        self.bindings.append({"max_tokens": kwargs.pop("max_tokens")})
         assert kwargs == {"method": "json_schema", "include_raw": True}
         self.mode = "json_schema"
         self.schema = schema
@@ -89,7 +93,7 @@ def gateway(monkeypatch, responses, capability=None, budget=None, **settings_kwa
     return model, client, constructor
 
 
-def tested(mode="json_text", tools=False, structured=False):
+def capability_fixture(mode="json_text", tools=False, structured=False):
     return CapabilityReport(
         mode="live", chat=True, tested=True, selected_output=mode,
         tool_calling=tools, structured_output=structured,
@@ -103,13 +107,14 @@ def decision_json():
 
 
 def test_configured_gateway_only_and_validated_json(monkeypatch):
-    model, client, config = gateway(monkeypatch, [response(decision_json())], tested())
+    model, client, config = gateway(monkeypatch, [response(decision_json())], capability_fixture())
     decision = model.decide({"question": "How does state work?", "tree": []})
     assert decision.action.path == "src/state.py"
     assert config["base_url"] == "https://third-party.example/v1"
     assert config["model"] == "custom-model"
     assert config["max_retries"] == 0
     assert config["use_responses_api"] is False
+    assert config["http_socket_options"] == ()
     assert model.usage.llm_calls == 1
     assert model.usage.input_tokens == 10
     assert model.usage.output_tokens == 5
@@ -167,7 +172,7 @@ def test_runtime_feature_rejection_falls_back(monkeypatch):
     model, _, _ = gateway(
         monkeypatch,
         [ProviderError("function tools unsupported", 400), response(decision_json())],
-        tested("tools", tools=True),
+        capability_fixture("tools", tools=True),
     )
     assert model.decide({}).action.path == "src/state.py"
     assert not model.capabilities.tool_calling
@@ -175,12 +180,40 @@ def test_runtime_feature_rejection_falls_back(monkeypatch):
     assert model.usage.llm_calls == 2
 
 
+def test_runtime_report_schema_incompatibility_uses_json_text(monkeypatch):
+    model, _, _ = gateway(
+        monkeypatch,
+        [ProviderError("Invalid schema for response_format: maxItems is not permitted", 400),
+         response('{"title":"Fallback report","claims":[]}')],
+        capability_fixture("json_schema", structured=True),
+    )
+    assert model.write_report({}).title == "Fallback report"
+    assert not model.capabilities.structured_output
+    assert model.usage.llm_calls == 2
+
+
+def test_schema_probe_does_not_count_adapter_tool_fallback(monkeypatch):
+    def substituted(client):
+        return {
+            "raw": tool_response("_CapabilityEcho", {"echo": "capability-ok"}),
+            "parsed": client.schema(echo="capability-ok"), "parsing_error": None,
+        }
+
+    model, _, _ = gateway(
+        monkeypatch,
+        [response("capability-ok"),
+         tool_response("_CapabilityEcho", {"echo": "capability-ok"}), substituted],
+    )
+    capability = model.probe()
+    assert capability.tool_calling and not capability.structured_output
+
+
 @pytest.mark.parametrize("status", [401, 403, 429, 500])
 def test_provider_failure_does_not_trigger_feature_fallback(monkeypatch, status):
     model, client, _ = gateway(
         monkeypatch,
         [ProviderError("unsupported tools SECRET server body", status)],
-        tested("tools", tools=True),
+        capability_fixture("tools", tools=True),
     )
     with pytest.raises(ModelError) as exc_info:
         model.decide({})
@@ -195,7 +228,7 @@ def test_provider_failure_does_not_trigger_feature_fallback(monkeypatch, status)
 @pytest.mark.parametrize("text", ["not JSON", '{"action":{"kind":"execute"},"rationale":"bad"}',
                                  '{"action":{"kind":"finish"},"rationale":"ok","extra":1}'])
 def test_malformed_json_is_rejected(monkeypatch, text):
-    model, _, _ = gateway(monkeypatch, [response(text)], tested())
+    model, _, _ = gateway(monkeypatch, [response(text)], capability_fixture())
     with pytest.raises(ModelError, match="invalid JSON"):
         model.decide({})
 
@@ -203,7 +236,7 @@ def test_malformed_json_is_rejected(monkeypatch, text):
 def test_malformed_tool_is_rejected(monkeypatch):
     model, _, _ = gateway(
         monkeypatch, [tool_response("Decision", {"action": {"kind": "execute"}})],
-        tested("tools", tools=True),
+        capability_fixture("tools", tools=True),
     )
     with pytest.raises(ModelError, match="invalid tool arguments"):
         model.decide({})
@@ -212,7 +245,7 @@ def test_malformed_tool_is_rejected(monkeypatch):
 def test_tool_decision_validated(monkeypatch):
     args = {"action": {"kind": "search", "query": "checkpoint"}, "rationale": "Find storage"}
     model, _, _ = gateway(
-        monkeypatch, [tool_response("Decision", args)], tested("tools", tools=True),
+        monkeypatch, [tool_response("Decision", args)], capability_fixture("tools", tools=True),
     )
     assert model.decide({}).action.query == "checkpoint"
 
@@ -225,19 +258,21 @@ def test_structured_report(monkeypatch):
             "parsing_error": None,
         }
 
-    model, _, _ = gateway(monkeypatch, [structured], tested("tools", tools=True, structured=True))
+    model, _, _ = gateway(
+        monkeypatch, [structured], capability_fixture("tools", tools=True, structured=True)
+    )
     assert model.write_report({"evidence": []}).title == "Test"
 
 
 def test_budget_reservation_prevents_request(monkeypatch):
-    model, client, _ = gateway(monkeypatch, [], tested(), Budget(max_tokens=100))
+    model, client, _ = gateway(monkeypatch, [], capability_fixture(), Budget(max_tokens=100))
     with pytest.raises(BudgetExceeded, match="token budget"):
         model.decide({})
     assert not client.invocations and model.usage.llm_calls == 0
 
 
 def test_resumed_usage_respects_call_budget(monkeypatch):
-    model, client, _ = gateway(monkeypatch, [], tested(), Budget(max_llm_calls=1))
+    model, client, _ = gateway(monkeypatch, [], capability_fixture(), Budget(max_llm_calls=1))
     model.usage.llm_calls = 1
     with pytest.raises(BudgetExceeded, match="call budget"):
         model.decide({})
@@ -245,7 +280,9 @@ def test_resumed_usage_respects_call_budget(monkeypatch):
 
 
 def test_unreported_usage_retains_reservation(monkeypatch):
-    model, _, _ = gateway(monkeypatch, [response(decision_json(), measured=False)], tested())
+    model, _, _ = gateway(
+        monkeypatch, [response(decision_json(), measured=False)], capability_fixture()
+    )
     model.decide({})
     assert model.usage.reserved_tokens > 0
     assert model.usage.input_tokens == model.usage.output_tokens == 0
@@ -253,14 +290,14 @@ def test_unreported_usage_retains_reservation(monkeypatch):
 
 def test_cost_preflight_and_measured_cost(monkeypatch):
     model, client, _ = gateway(
-        monkeypatch, [], tested(), Budget(max_cost_usd=0),
+        monkeypatch, [], capability_fixture(), Budget(max_cost_usd=0),
         llm_input_price_per_million=1, llm_output_price_per_million=2,
     )
     with pytest.raises(BudgetExceeded, match="cost budget"):
         model.decide({})
     assert not client.invocations
     model, _, _ = gateway(
-        monkeypatch, [response(decision_json())], tested(),
+        monkeypatch, [response(decision_json())], capability_fixture(),
         llm_input_price_per_million=1, llm_output_price_per_million=2,
     )
     model.decide({})
@@ -269,7 +306,7 @@ def test_cost_preflight_and_measured_cost(monkeypatch):
 
 
 def test_timeout_is_sanitized_and_usage_preserved(monkeypatch):
-    model, _, _ = gateway(monkeypatch, [ProviderTimeout("KEY body")], tested())
+    model, _, _ = gateway(monkeypatch, [ProviderTimeout("KEY body")], capability_fixture())
     with pytest.raises(ModelError, match="timeout") as exc_info:
         model.decide({})
     assert "KEY" not in str(exc_info.value)
@@ -280,7 +317,7 @@ def test_bounded_retries_charge_each_http_attempt(monkeypatch):
     model, client, _ = gateway(
         monkeypatch,
         [ProviderTimeout("KEY"), response(decision_json())],
-        tested(), llm_max_retries=1,
+        capability_fixture(), llm_max_retries=1,
     )
     assert model.decide({}).action.kind == "read"
     assert len(client.invocations) == 2
@@ -378,3 +415,146 @@ def test_mock_follows_goal_symbol_beyond_initial_excerpt():
 def test_decision_round_trip_contract():
     decision = Decision(action=ToolAction(kind="finish"), rationale="Enough verified evidence")
     assert Decision.model_validate_json(decision.model_dump_json()) == decision
+
+
+def test_usage_write_ahead_hook_runs_before_transport_and_after_settlement(monkeypatch):
+    recorded = []
+
+    def transport_response(client):
+        assert len(recorded) == 1
+        assert recorded[0].llm_calls == 1 and recorded[0].reserved_tokens > 0
+        return response(decision_json())
+
+    model, _, _ = gateway(monkeypatch, [transport_response], capability_fixture())
+    model.on_usage = lambda usage: recorded.append(usage.model_copy(deep=True))
+    model.decide({})
+    assert len(recorded) == 2
+    assert recorded[-1].reserved_tokens == 0
+    assert recorded[-1].input_tokens == 10
+
+
+def test_usage_write_ahead_hook_survives_http_failure(monkeypatch):
+    model, _, _ = gateway(monkeypatch, [ProviderTimeout("secret")], capability_fixture())
+    recorded = []
+    model.on_usage = lambda usage: recorded.append(usage.model_copy(deep=True))
+    with pytest.raises(ModelError, match="timeout"):
+        model.decide({})
+    assert len(recorded) == 1
+    assert recorded[0].reserved_tokens == model.usage.reserved_tokens > 0
+
+
+def http_gateway(monkeypatch, handler, capability=None):
+    """Real current ChatOpenAI/OpenAI SDK, exclusively intercepted HTTP requests."""
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    def adapter(**kwargs):
+        return RealChatOpenAI(**kwargs, http_client=client)
+
+    monkeypatch.setattr("repo_research.llm.ChatOpenAI", adapter)
+    settings = Settings(
+        model_mode="live", llm_base_url="https://third-party.example/v1",
+        llm_api_key="mock-http-key", llm_model="configured-relay-model", llm_max_retries=0,
+    )
+    return ModelGateway(settings, Budget(), Usage(), capability), client
+
+
+def completion(message, finish_reason="stop"):
+    return httpx.Response(200, json={
+        "id": "chatcmpl-mock", "object": "chat.completion", "created": 1,
+        "model": "configured-relay-model",
+        "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
+        "usage": {"prompt_tokens": 7, "completion_tokens": 4, "total_tokens": 11},
+    })
+
+
+def test_real_adapter_mock_http_probes_tools_and_report(monkeypatch):
+    requests = []
+    recorded = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        assert request.url == "https://third-party.example/v1/chat/completions"
+        assert body["model"] == "configured-relay-model"
+        assert body.get("max_tokens", body.get("max_completion_tokens", 0)) > 0
+        assert recorded[-1].reserved_tokens > 0  # Ledger reserved before actual HTTP.
+        if body.get("tools"):
+            name = body["tools"][0]["function"]["name"]
+            args = {"echo": "capability-ok"} if name == "_CapabilityEcho" else {
+                "action": {"kind": "read", "path": "core.py"}, "rationale": "Inspect goal",
+            }
+            return completion({
+                "role": "assistant", "content": None,
+                "tool_calls": [{"id": "call-mock", "type": "function", "function": {
+                    "name": name, "arguments": json.dumps(args),
+                }}],
+            }, "tool_calls")
+        schema = body.get("response_format", {}).get("json_schema", {})
+        if schema:
+            value = {"echo": "capability-ok"} if schema["name"] == "_CapabilityEcho" else {
+                "title": "Evidence report", "summary": "Static evidence",
+                "claims": [{"section": "Mechanism", "category": "fact",
+                            "text": "core.py defines the entry point", "evidence_ids": ["E1"]}],
+                "limitations": [],
+            }
+            return completion({"role": "assistant", "content": json.dumps(value)})
+        return completion({"role": "assistant", "content": "capability-ok"})
+
+    model, client = http_gateway(monkeypatch, handler)
+    model.on_usage = lambda usage: recorded.append(usage.model_copy(deep=True))
+    try:
+        capabilities = model.probe()
+        assert capabilities.chat and capabilities.tool_calling and capabilities.structured_output
+        assert model.decide({"question": "core architecture"}).action.path == "core.py"
+        draft = model.write_report({"question": "core architecture", "evidence": [{"id": "E1"}]})
+        assert draft.claims[0].evidence_ids == ["E1"]
+        assert len(requests) == model.usage.llm_calls == 5
+        assert model.usage.input_tokens == 35 and model.usage.output_tokens == 20
+        assert model.usage.reserved_tokens == 0
+        assert len(recorded) == 10
+    finally:
+        model.close()
+        client.close()
+
+
+def test_real_adapter_mock_http_unsupported_features_fallback(monkeypatch):
+    requests = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        if body.get("tools") or body.get("response_format"):
+            feature = "tools" if body.get("tools") else "json_schema"
+            return httpx.Response(400, json={"error": {
+                "message": f"{feature} unsupported mock-http-key", "type": "invalid_request_error",
+            }})
+        prompt = body["messages"][-1]["content"]
+        if "required_schema" in prompt:
+            return completion({"role": "assistant", "content": decision_json()})
+        return completion({"role": "assistant", "content": "capability-ok"})
+
+    model, client = http_gateway(monkeypatch, handler)
+    try:
+        assert model.probe().selected_output == "json_text"
+        assert model.decide({"question": "state"}).action.kind == "read"
+        assert model.usage.llm_calls == len(requests) == 4
+        assert "mock-http-key" not in model.capabilities.model_dump_json()
+    finally:
+        model.close()
+        client.close()
+
+
+def test_real_adapter_mock_http_timeout_sanitized(monkeypatch):
+    def handler(request):
+        raise httpx.ReadTimeout("mock-http-key confidential server body", request=request)
+
+    model, client = http_gateway(monkeypatch, handler, capability_fixture())
+    try:
+        with pytest.raises(ModelError, match="timeout") as exc_info:
+            model.decide({})
+        assert "mock-http-key" not in str(exc_info.value)
+        assert "confidential" not in str(exc_info.value)
+        assert model.usage.llm_calls == 1 and model.usage.reserved_tokens > 0
+    finally:
+        model.close()
+        client.close()

@@ -104,11 +104,16 @@ def main(argv: list[str] | None = None) -> int:
         if arguments.command == "probe":
             usage = Usage()
             model = make_model(settings, Budget(), usage)
-            capabilities = model.probe()
-            _print_json(
-                {"capabilities": capabilities.model_dump(), "usage": usage.model_dump()}
-            )
-            return 0 if capabilities.chat or settings.model_mode == "mock" else 1
+            try:
+                capabilities = model.probe()
+                _print_json(
+                    {"capabilities": capabilities.model_dump(), "usage": usage.model_dump()}
+                )
+                return 0 if capabilities.chat or settings.model_mode == "mock" else 1
+            finally:
+                close = getattr(model, "close", None)
+                if callable(close):
+                    close()
 
         service = ResearchService(settings)
         try:

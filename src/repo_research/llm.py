@@ -111,7 +111,11 @@ def _unsupported(exc: Exception, feature: str) -> bool:
     value = str(exc).lower()
     names = ("tool", "function") if feature == "tools" else ("json_schema", "response_format")
     return any(name in value for name in names) and any(
-        term in value for term in ("unsupported", "not supported", "not available", "unknown")
+        term in value
+        for term in (
+            "unsupported", "not supported", "not available", "unknown", "does not support",
+            "not permitted", "unrecognized", "invalid schema", "is not allowed",
+        )
     )
 
 
@@ -164,6 +168,8 @@ class ModelGateway:
                 model=settings.llm_model,
                 timeout=settings.llm_timeout,
                 max_retries=0,
+                # Retain httpx's inherited HTTP(S)_PROXY routing in managed clouds.
+                http_socket_options=(),
                 # Explicitly stay on chat completions; gateways often lack Responses.
                 use_responses_api=False,
             )
@@ -180,7 +186,7 @@ class ModelGateway:
 
     def _invoke(
         self,
-        factory: Callable[[], Any],
+        factory: Callable[[int], Any],
         messages: list[Any],
         schema: type[BaseModel] | None = None,
         output_limit: int = 1400,
@@ -213,7 +219,9 @@ class ModelGateway:
             if self.on_usage is not None:
                 self.on_usage(self.usage)
             try:
-                response = factory().bind(max_tokens=outputs).invoke(messages)
+                # Bind the cap on the underlying model, before any parsing map.
+                # Outer .bind() on include_raw structured chains drops this kwarg.
+                response = factory(outputs).invoke(messages)
             except Exception as exc:
                 if _unsupported(exc, feature):
                     raise _UnsupportedFeature(feature) from None
@@ -259,7 +267,7 @@ class ModelGateway:
         report = CapabilityReport(mode="live")
         self.capabilities = report
         response = self._invoke(
-            lambda: self._client,
+            lambda cap: self._client.bind(max_tokens=cap),
             [HumanMessage(content="Reply with exactly capability-ok and no other text.")],
             output_limit=96,
         )
@@ -271,8 +279,8 @@ class ModelGateway:
         messages = [HumanMessage(content="Return echo=capability-ok using the supplied schema.")]
         try:
             result = self._invoke(
-                lambda: self._client.bind_tools(
-                    [_CapabilityEcho], tool_choice=_CapabilityEcho.__name__
+                lambda cap: self._client.bind_tools(
+                    [_CapabilityEcho], tool_choice=_CapabilityEcho.__name__, max_tokens=cap
                 ),
                 messages,
                 _CapabilityEcho,
@@ -284,8 +292,8 @@ class ModelGateway:
             report.details.append("Tool probe unsupported or semantically invalid.")
         try:
             result = self._invoke(
-                lambda: self._client.with_structured_output(
-                    _CapabilityEcho, method="json_schema", include_raw=True
+                lambda cap: self._client.with_structured_output(
+                    _CapabilityEcho, method="json_schema", include_raw=True, max_tokens=cap
                 ),
                 messages,
                 _CapabilityEcho,
@@ -294,7 +302,10 @@ class ModelGateway:
             )
             report.structured_output = (
                 self._structured(result, _CapabilityEcho).echo == "capability-ok"
+                and not getattr(result.get("raw"), "tool_calls", [])
             )
+            if not report.structured_output:
+                report.details.append("Adapter substituted tool calling for the JSON-schema test.")
         except (_UnsupportedFeature, _InvalidOutput):
             report.details.append("JSON-schema probe unsupported or semantically invalid.")
         report.selected_output = self._select_output()
@@ -338,7 +349,9 @@ class ModelGateway:
         try:
             if mode == "tools":
                 result = self._invoke(
-                    lambda: self._client.bind_tools([schema], tool_choice=schema.__name__),
+                    lambda cap: self._client.bind_tools(
+                        [schema], tool_choice=schema.__name__, max_tokens=cap
+                    ),
                     messages,
                     schema,
                     limit,
@@ -347,8 +360,8 @@ class ModelGateway:
                 return _validate_tool(result, schema)
             if mode == "json_schema":
                 result = self._invoke(
-                    lambda: self._client.with_structured_output(
-                        schema, method="json_schema", include_raw=True
+                    lambda cap: self._client.with_structured_output(
+                        schema, method="json_schema", include_raw=True, max_tokens=cap
                     ),
                     messages,
                     schema,
@@ -365,7 +378,9 @@ class ModelGateway:
             self.capabilities.details.append(
                 f"Runtime {mode} unsupported; using validated JSON text."
             )
-        result = self._invoke(lambda: self._client, messages, schema, limit)
+        result = self._invoke(
+            lambda cap: self._client.bind(max_tokens=cap), messages, schema, limit
+        )
         return _validate_json(result, schema)
 
     def decide(self, context: dict) -> Decision:
@@ -578,7 +593,9 @@ class MockModel:
         for term in terms[:2]:
             action = ToolAction(kind="search", query=term)
             if not _done(attempts, action):
-                return decision(action, f"搜索研究目标中的文本 {term}，补充有限范围的真实代码证据。")
+                return decision(
+                    action, f"搜索研究目标中的文本 {term}，补充有限范围的真实代码证据。"
+                )
         return decision(ToolAction(kind="finish"), "没有新的未尝试候选操作，避免重复循环。")
 
     def write_report(self, context: dict) -> ReportDraft:

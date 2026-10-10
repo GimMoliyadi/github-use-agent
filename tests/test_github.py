@@ -427,3 +427,31 @@ def test_source_line_count_follows_github_lf_lines(tmp_path):
     with client(tmp_path, lambda request: json_response(content)) as github:
         source = github.read_file(repo(), "app.py")
         assert source.total_lines == 1
+
+
+def test_oversized_recursive_response_falls_back_to_bounded_hierarchy(tmp_path, monkeypatch):
+    requests = []
+
+    def handler(request):
+        requests.append(request.url)
+        if "recursive" in request.url.params:
+            return httpx.Response(200, content=b" " * 200)
+        return json_response({"sha": ROOT_TREE, "truncated": False, "tree": [
+            {"path": "app.py", "type": "blob", "sha": "d" * 40, "size": 12},
+        ]})
+
+    with client(tmp_path, handler) as github:
+        request_json = github._request_json
+
+        def bounded_request(endpoint, **kwargs):
+            if (kwargs.get("params") or {}).get("recursive") == "1":
+                kwargs["max_response_bytes"] = 100
+            return request_json(endpoint, **kwargs)
+
+        monkeypatch.setattr(github, "_request_json", bounded_request)
+        listing = github.tree(repo())
+        assert [entry.path for entry in listing.entries] == ["app.py"]
+        assert not listing.truncated
+        assert any("byte budget" in warning for warning in listing.warnings)
+        assert github.request_count == 2
+        assert len(requests) == 2

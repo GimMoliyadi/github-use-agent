@@ -174,7 +174,14 @@ class ResearchService:
         task_id = task["id"]
         runner = None
         try:
-            self.store.patch(task_id, status="running")
+            with self._lock:
+                if pause_event.is_set():
+                    self.store.patch(
+                        task_id, status="paused", pause_requested=False,
+                        stop_reason="Paused before repository initialization.",
+                    )
+                    return
+                self.store.patch(task_id, status="running")
             runner = self._create_runner(pause_event)
 
             def update(state: dict) -> None:
@@ -189,7 +196,6 @@ class ResearchService:
                 Budget.model_validate(task["budget"]), resume=resume, on_update=update,
             )
             update(state)
-            self.store.patch(task_id, pause_requested=False)
         except Exception as exc:
             # Upstream exception text can contain URL credentials, source data,
             # provider bodies or local paths. Keep only its class name.
@@ -206,6 +212,10 @@ class ResearchService:
                 except Exception as exc:
                     logger.error("Research cleanup failed: %s", type(exc).__name__)
             with self._lock:
+                try:
+                    self.store.patch(task_id, pause_requested=False)
+                except Exception as exc:
+                    logger.error("Research status cleanup failed: %s", type(exc).__name__)
                 self._jobs.pop(task_id, None)
 
     def close(self) -> None:

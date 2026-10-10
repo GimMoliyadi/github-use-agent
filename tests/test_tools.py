@@ -15,7 +15,6 @@ from repo_research.models import (
 )
 from repo_research.tools import ResearchTools, ToolBudgetExceeded, ToolError, source_lines
 
-
 SHA = "a" * 40
 SOURCE = (
     "from pkg.memory import Memory\n"
@@ -33,9 +32,14 @@ SOURCE = (
 @pytest.fixture
 def repo():
     return RepositoryInfo(
-        owner="example", name="agent", full_name="example/agent",
-        url="https://github.com/example/agent", default_branch="main",
-        commit_sha=SHA, tree_sha="c" * 40, language="Python",
+        owner="example",
+        name="agent",
+        full_name="example/agent",
+        url="https://github.com/example/agent",
+        default_branch="main",
+        commit_sha=SHA,
+        tree_sha="c" * 40,
+        language="Python",
     )
 
 
@@ -53,18 +57,24 @@ class DummyClient:
 
 def source(path, text=SOURCE):
     return SourceFile(
-        path=path, text=text, blob_sha="b" * 40,
-        size=len(text.encode()), total_lines=len(source_lines(text)),
+        path=path,
+        text=text,
+        blob_sha="b" * 40,
+        size=len(text.encode()),
+        total_lines=len(source_lines(text)),
     )
 
 
 def make_tools(repo, sources=None, *, budget=None, entries=None, usage=None):
     sources = sources or {"src/agent.py": source("src/agent.py")}
     client = DummyClient(sources)
-    tree = TreeListing(entries=entries or [
-        TreeEntry(path=file.path, sha=file.blob_sha, size=file.size)
-        for file in sources.values()
-    ])
+    tree = TreeListing(
+        entries=entries
+        or [
+            TreeEntry(path=file.path, sha=file.blob_sha, size=file.size)
+            for file in sources.values()
+        ]
+    )
     usage = usage or Usage()
     tools = ResearchTools(client, repo, tree, budget or Budget(), usage)
     return tools, client, usage
@@ -72,6 +82,30 @@ def make_tools(repo, sources=None, *, budget=None, entries=None, usage=None):
 
 def dump(value):
     return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def many_functions(count=64):
+    return "\n".join(f"def function_{index}():\n    return {index}\n" for index in range(count))
+
+
+def assert_observation_citations_resolve(result, tools):
+    """Every emitted identifier resolves to an exact excerpt from a loaded file."""
+    by_id = {item["id"]: item for item in tools.evidence}
+    assert set(result["evidence_ids"]) <= by_id.keys()
+    for identifier in result["evidence_ids"]:
+        item = by_id[identifier]
+        file = tools.files[item["path"]]
+        assert item["excerpt"] == "\n".join(
+            source_lines(file["text"])[item["start_line"] - 1 : item["end_line"]]
+        )
+        assert item["commit_sha"] == SHA
+    for key in ("definitions", "call_sites", "candidate_modules"):
+        for relation in result.get(key, []):
+            identifier = relation.get("evidence_id")
+            if identifier:
+                assert identifier in result["evidence_ids"]
+            else:
+                assert relation["citation_status"] == "index_only"
 
 
 def test_read_produces_exact_numbered_evidence_and_fixed_commit(repo):
@@ -88,14 +122,17 @@ def test_read_produces_exact_numbered_evidence_and_fixed_commit(repo):
     assert client.calls[0][0] == SHA
 
 
-@pytest.mark.parametrize("path,kind", [
-    ("README.md", "documentation"),
-    ("docs/architecture.rst", "documentation"),
-    ("requirements.txt", "configuration"),
-    ("pyproject.toml", "configuration"),
-    ("package.json", "configuration"),
-    ("src/agent.py", "code"),
-])
+@pytest.mark.parametrize(
+    "path,kind",
+    [
+        ("README.md", "documentation"),
+        ("docs/architecture.rst", "documentation"),
+        ("requirements.txt", "configuration"),
+        ("pyproject.toml", "configuration"),
+        ("package.json", "configuration"),
+        ("src/agent.py", "code"),
+    ],
+)
 def test_citation_category_is_derived_from_source_path(repo, path, kind):
     tools, _, _ = make_tools(repo, {path: source(path)})
     result = tools.execute(ToolAction(kind="read", path=path))
@@ -141,8 +178,13 @@ def test_serialized_tool_state_preserves_budget_and_citations_after_recovery(rep
     first = tools.execute(action)
     restored_usage = Usage.model_validate_json(usage.model_dump_json())
     restored = ResearchTools(
-        client, repo, tools.tree, budget, restored_usage,
-        files=json.loads(json.dumps(tools.files)), evidence=json.loads(json.dumps(tools.evidence)),
+        client,
+        repo,
+        tools.tree,
+        budget,
+        restored_usage,
+        files=json.loads(json.dumps(tools.files)),
+        evidence=json.loads(json.dumps(tools.evidence)),
     )
     again = restored.execute(action)
     with pytest.raises(ToolBudgetExceeded):
@@ -173,12 +215,87 @@ def test_symbols_paginate_large_files_without_repeated_downloads(repo):
     assert first["definition_count"] == 40
     assert first["has_more"] is True
     assert len(first["definitions"]) == 16
-    next_page = tools.execute(ToolAction(
-        kind="symbols", path="src/agent.py", start_line=first["next_start_line"],
-    ))
+    next_page = tools.execute(
+        ToolAction(
+            kind="symbols",
+            path="src/agent.py",
+            start_line=first["next_start_line"],
+        )
+    )
     assert next_page["definitions"][0]["name"] == "function_16"
     assert set(first["evidence_ids"]).isdisjoint(next_page["evidence_ids"])
     assert len(client.calls) == 1
+
+
+def test_four_symbol_pages_leave_evidence_budget_for_targeted_implementation_trace(repo):
+    text = many_functions()
+    tools, client, _ = make_tools(repo, {"src/agent.py": source("src/agent.py", text)})
+    start_line = 1
+    names = []
+    metadata_only = []
+    for page_number in range(4):
+        before = len(tools.evidence)
+        page = tools.execute(ToolAction(kind="symbols", path="src/agent.py", start_line=start_line))
+        assert len(page["definitions"]) == 16
+        assert len(tools.evidence) - before <= 4
+        assert_observation_citations_resolve(page, tools)
+        names.extend(item["name"] for item in page["definitions"])
+        metadata_only.extend(item for item in page["definitions"] if not item.get("evidence_id"))
+        if page_number < 3:
+            assert page["has_more"] is True
+            start_line = page["next_start_line"]
+        else:
+            assert page["has_more"] is False
+    assert names == [f"function_{index}" for index in range(64)]
+    assert metadata_only
+    assert len(tools.evidence) <= 16 < tools.budget.max_evidence
+    assert len(client.calls) == 1
+
+    trace = tools.execute(ToolAction(kind="trace", path="src/agent.py", symbol="function_63"))
+    target = next(item for item in trace["definitions"] if item["name"] == "function_63")
+    assert target["evidence_id"]
+    by_id = {item["id"]: item for item in tools.evidence}
+    assert "return 63" in by_id[target["evidence_id"]]["excerpt"]
+    assert_observation_citations_resolve(trace, tools)
+    assert len(client.calls) == 1
+
+
+def test_repeated_and_restored_symbol_index_does_not_spend_more_citations(repo):
+    text = many_functions()
+    tools, client, usage = make_tools(repo, {"src/agent.py": source("src/agent.py", text)})
+    action = ToolAction(kind="symbols", path="src/agent.py")
+    first = tools.execute(action)
+    first_ids = list(first["evidence_ids"])
+    count = len(tools.evidence)
+    assert 0 < count <= 4
+    second = tools.execute(action)
+    assert second["evidence_ids"] == first_ids
+    assert len(tools.evidence) == count
+
+    restored = ResearchTools(
+        client,
+        repo,
+        tools.tree,
+        tools.budget,
+        Usage.model_validate_json(usage.model_dump_json()),
+        files=json.loads(json.dumps(tools.files)),
+        evidence=json.loads(json.dumps(tools.evidence)),
+    )
+    third = restored.execute(action)
+    assert third["evidence_ids"] == first_ids
+    assert len(restored.evidence) == count
+    assert len(client.calls) == 1
+    assert_observation_citations_resolve(third, restored)
+
+
+def test_targeted_symbol_index_cites_bounded_subset_of_matching_definitions(repo):
+    text = many_functions(32)
+    tools, _, _ = make_tools(repo, {"src/agent.py": source("src/agent.py", text)})
+    result = tools.execute(ToolAction(kind="symbols", path="src/agent.py", query="function_"))
+    assert len(result["definitions"]) == 16
+    assert 0 < len(tools.evidence) <= 6
+    assert any(item.get("citation_status") == "index_only" for item in result["definitions"])
+    assert_observation_citations_resolve(result, tools)
 
 
 def test_targeted_symbols_find_implementation_beyond_initial_read_range(repo):
@@ -196,6 +313,68 @@ def test_trace_reports_lexical_calls_without_claiming_runtime_dispatch(repo):
     assert "invoke" in dump(result["call_sites"])
     assert result["confidence"] == "static_syntax"
     assert result["evidence_ids"]
+
+
+def test_trace_groups_twelve_calls_into_bounded_exact_citations(repo):
+    text = (
+        "def orchestrate(state):\n"
+        + "".join(f"    state = step_{index}(state)\n" for index in range(12))
+        + "    return state\n"
+    )
+    tools, _, _ = make_tools(repo, {"src/agent.py": source("src/agent.py", text)})
+    result = tools.execute(ToolAction(kind="trace", path="src/agent.py", symbol="orchestrate"))
+    assert len(result["call_sites"]) == 12
+    assert 0 < len(tools.evidence) <= 8
+    assert any(item.get("evidence_id") for item in result["call_sites"])
+    assert_observation_citations_resolve(result, tools)
+    by_id = {item["id"]: item for item in tools.evidence}
+    for call in result["call_sites"]:
+        if call.get("evidence_id"):
+            citation = by_id[call["evidence_id"]]
+            assert citation["start_line"] <= call["start_line"]
+            assert citation["end_line"] >= call["end_line"]
+    assert (
+        len({item["evidence_id"] for item in result["call_sites"] if item.get("evidence_id")}) < 12
+    )
+
+
+def test_symbols_and_trace_reuse_existing_broad_source_read(repo):
+    text = (
+        "def orchestrate(state):\n"
+        + "".join(f"    state = step_{index}(state)\n" for index in range(12))
+        + "    return state\n"
+    )
+    tools, client, _ = make_tools(repo, {"src/agent.py": source("src/agent.py", text)})
+    read = tools.execute(ToolAction(kind="read", path="src/agent.py"))
+    identifier = read["evidence"]["id"]
+    symbols = tools.execute(ToolAction(kind="symbols", path="src/agent.py"))
+    trace = tools.execute(ToolAction(kind="trace", path="src/agent.py", symbol="orchestrate"))
+    assert symbols["evidence_ids"] == [identifier]
+    assert trace["evidence_ids"] == [identifier]
+    assert len(tools.evidence) == 1
+    assert len(client.calls) == 1
+    assert_observation_citations_resolve(symbols, tools)
+    assert_observation_citations_resolve(trace, tools)
+
+
+@pytest.mark.parametrize("kind", ["symbols", "trace"])
+def test_exhausted_citation_budget_returns_explicit_index_metadata(repo, kind):
+    text = many_functions(32)
+    tools, _, _ = make_tools(
+        repo, {"src/agent.py": source("src/agent.py", text)}, budget=Budget(max_evidence=1)
+    )
+    tools.execute(ToolAction(kind="read", path="src/agent.py", start_line=1, end_line=1))
+    result = tools.execute(ToolAction(kind=kind, path="src/agent.py", symbol="function_31"))
+    assert result["definitions"]
+    assert all(item["citation_status"] == "index_only" for item in result["definitions"])
+    assert all("evidence_id" not in item for item in result["definitions"])
+    assert result["evidence_ids"] == []
+    assert result["warnings"]
+    assert any(
+        term in dump(result["warnings"]).lower()
+        for term in ("index_only", "metadata", "uncited", "citation budget")
+    )
+    assert len(tools.evidence) == 1
 
 
 def test_trace_can_follow_cross_file_import_candidates_with_individual_evidence(repo):
@@ -336,12 +515,15 @@ def test_evidence_budget_blocks_new_citations_but_reuses_existing_citation(repo)
     assert len(tools.evidence) == 1
 
 
-@pytest.mark.parametrize("changes,code", [
-    ({"total_lines": 500}, "incomplete_file"),
-    ({"path": "src/other.py"}, "source_mismatch"),
-    ({"blob_sha": "f" * 40}, "source_mismatch"),
-    ({"text": "abc\0def", "total_lines": 1}, "binary_file"),
-])
+@pytest.mark.parametrize(
+    "changes,code",
+    [
+        ({"total_lines": 500}, "incomplete_file"),
+        ({"path": "src/other.py"}, "source_mismatch"),
+        ({"blob_sha": "f" * 40}, "source_mismatch"),
+        ({"text": "abc\0def", "total_lines": 1}, "binary_file"),
+    ],
+)
 def test_mismatched_or_incomplete_downloads_never_become_evidence(repo, changes, code):
     original = source("src/agent.py")
     tools, client, _ = make_tools(repo, {"src/agent.py": original})
@@ -359,4 +541,3 @@ def test_invalid_python_is_a_recoverable_static_analysis_result(repo):
         tools.execute(ToolAction(kind="symbols", path="src/broken.py"))
     assert error.value.code == "parse_error"
     assert tools.files["src/broken.py"]["text"] == "def broken(:\n"
-

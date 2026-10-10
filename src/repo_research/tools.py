@@ -15,7 +15,6 @@ from repo_research.models import (
     RepositoryInfo,
     SourceFile,
     ToolAction,
-    TreeEntry,
     TreeListing,
     Usage,
 )
@@ -29,15 +28,49 @@ MAX_NEW_FILES_PER_ACTION = 3
 MAX_SEARCH_MATCHES = 12
 IGNORED_DIRECTORIES = frozenset(
     {
-        ".git", ".venv", "venv", "node_modules", "vendor", "dist", "build", "__pycache__",
-        ".next", ".cache", "coverage", "site-packages", "target", "assets", "images",
+        ".git",
+        ".venv",
+        "venv",
+        "node_modules",
+        "vendor",
+        "dist",
+        "build",
+        "__pycache__",
+        ".next",
+        ".cache",
+        "coverage",
+        "site-packages",
+        "target",
+        "assets",
+        "images",
     }
 )
 BINARY_EXTENSIONS = frozenset(
     {
-        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".svg", ".pdf", ".zip",
-        ".gz", ".tar", ".woff", ".woff2", ".ttf", ".mp4", ".mp3", ".so", ".dll",
-        ".exe", ".pyc", ".sqlite", ".db", ".lock", ".ipynb",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
+        ".ico",
+        ".svg",
+        ".pdf",
+        ".zip",
+        ".gz",
+        ".tar",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".mp4",
+        ".mp3",
+        ".so",
+        ".dll",
+        ".exe",
+        ".pyc",
+        ".sqlite",
+        ".db",
+        ".lock",
+        ".ipynb",
     }
 )
 DOCUMENT_EXTENSIONS = frozenset({".md", ".rst", ".adoc", ".txt"})
@@ -135,11 +168,15 @@ class _PythonIndex(ast.NodeVisitor):
 
     def _definition(self, node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> None:
         name = ".".join([*self.scope, node.name])
-        self.definitions.append({
-            "name": node.name, "qualified_name": name,
-            "kind": "class" if isinstance(node, ast.ClassDef) else "function",
-            "start_line": node.lineno, "end_line": node.end_lineno or node.lineno,
-        })
+        self.definitions.append(
+            {
+                "name": node.name,
+                "qualified_name": name,
+                "kind": "class" if isinstance(node, ast.ClassDef) else "function",
+                "start_line": node.lineno,
+                "end_line": node.end_lineno or node.lineno,
+            }
+        )
         self.scope.append(node.name)
         self.generic_visit(node)
         self.scope.pop()
@@ -155,24 +192,39 @@ class _PythonIndex(ast.NodeVisitor):
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
-            self.imports.append({
-                "module": alias.name, "name": "", "alias": alias.asname or alias.name.split(".")[0],
-                "level": 0, "line": node.lineno, "end_line": node.end_lineno or node.lineno,
-            })
+            self.imports.append(
+                {
+                    "module": alias.name,
+                    "name": "",
+                    "alias": alias.asname or alias.name.split(".")[0],
+                    "level": 0,
+                    "line": node.lineno,
+                    "end_line": node.end_lineno or node.lineno,
+                }
+            )
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         for alias in node.names:
-            self.imports.append({
-                "module": node.module or "", "name": alias.name,
-                "alias": alias.asname or alias.name, "level": node.level, "line": node.lineno,
-                "end_line": node.end_lineno or node.lineno,
-            })
+            self.imports.append(
+                {
+                    "module": node.module or "",
+                    "name": alias.name,
+                    "alias": alias.asname or alias.name,
+                    "level": node.level,
+                    "line": node.lineno,
+                    "end_line": node.end_lineno or node.lineno,
+                }
+            )
 
     def visit_Call(self, node: ast.Call) -> None:
-        self.calls.append({
-            "callee": _node_name(node.func), "caller": ".".join(self.scope) or "<module>",
-            "start_line": node.lineno, "end_line": node.end_lineno or node.lineno,
-        })
+        self.calls.append(
+            {
+                "callee": _node_name(node.func),
+                "caller": ".".join(self.scope) or "<module>",
+                "start_line": node.lineno,
+                "end_line": node.end_lineno or node.lineno,
+            }
+        )
         self.generic_visit(node)
 
 
@@ -198,9 +250,11 @@ class ResearchTools:
         self.evidence = evidence if evidence is not None else []
         self.entries = {entry.path: entry for entry in tree.entries if entry.type == "blob"}
         self._new_files = 0
+        self._new_citations = 0
 
     def execute(self, action: ToolAction) -> dict[str, Any]:
         self._new_files = 0
+        self._new_citations = 0
         if action.kind == "finish":
             return {"kind": "finish", "message": "Exploration complete."}
         return getattr(self, f"_{action.kind}")(action)
@@ -244,9 +298,8 @@ class ResearchTools:
             )
         if "\0" in source.text:
             raise ToolError("binary_file", "Binary content cannot become source evidence.")
-        if (
-            source.total_lines != len(source_lines(source.text))
-            or source.size != len(source.text.encode("utf-8"))
+        if source.total_lines != len(source_lines(source.text)) or source.size != len(
+            source.text.encode("utf-8")
         ):
             raise ToolError(
                 "incomplete_file", "Source line metadata does not match complete content."
@@ -268,14 +321,67 @@ class ResearchTools:
         if len(self.evidence) >= self.budget.max_evidence:
             raise ToolBudgetExceeded("The evidence citation budget is exhausted.")
         evidence = Evidence(
-            id=identifier, repository=self.repo.full_name, commit_sha=self.repo.commit_sha,
-            path=source.path, start_line=start, end_line=end,
-            excerpt="\n".join(lines[start - 1:end]),
-            blob_sha=source.blob_sha, url=evidence_url(self.repo, source.path, start, end),
-            kind=source_kind(source.path), verified=False,
+            id=identifier,
+            repository=self.repo.full_name,
+            commit_sha=self.repo.commit_sha,
+            path=source.path,
+            start_line=start,
+            end_line=end,
+            excerpt="\n".join(lines[start - 1 : end]),
+            blob_sha=source.blob_sha,
+            url=evidence_url(self.repo, source.path, start, end),
+            kind=source_kind(source.path),
+            verified=False,
         ).model_dump()
         self.evidence.append(evidence)
         return evidence
+
+    def _goal_cite(
+        self, source: SourceFile, start: int, end: int, *, limit: int, allow_new: bool = True
+    ) -> dict[str, Any] | None:
+        """Reuse exact source coverage; indexes must leave room for deeper goal research."""
+        lines = source_lines(source.text)
+        covering = [
+            item
+            for item in self.evidence
+            if item.get("repository") == self.repo.full_name
+            and item.get("commit_sha") == self.repo.commit_sha
+            and item.get("path") == source.path
+            and item.get("blob_sha") == source.blob_sha
+            and 1 <= item.get("start_line", 0) <= start <= end <= item.get("end_line", 0)
+            and item["end_line"] <= len(lines)
+            and item["end_line"] - item["start_line"] + 1 <= MAX_READ_LINES
+            and item.get("excerpt") == "\n".join(lines[item["start_line"] - 1 : item["end_line"]])
+            and item.get("id")
+            == evidence_identifier(
+                self.repo.full_name,
+                self.repo.commit_sha,
+                source.path,
+                item["start_line"],
+                item["end_line"],
+                source.blob_sha,
+            )
+            and item.get("url")
+            == evidence_url(self.repo, source.path, item["start_line"], item["end_line"])
+        ]
+        if covering:
+            return min(covering, key=lambda item: item["end_line"] - item["start_line"])
+        if (
+            not allow_new
+            or self._new_citations >= limit
+            or len(self.evidence) >= self.budget.max_evidence
+        ):
+            return None
+        evidence = self._cite(source, start, end)
+        self._new_citations += 1
+        return evidence
+
+    @staticmethod
+    def _attach_citation(item: dict, evidence: dict | None, evidence_ids: list[str]) -> None:
+        item["citation_status"] = "cited" if evidence else "index_only"
+        if evidence:
+            item["evidence_id"] = evidence["id"]
+            evidence_ids.append(evidence["id"])
 
     def _read(self, action: ToolAction) -> dict[str, Any]:
         if action.end_line < action.start_line:
@@ -286,14 +392,19 @@ class ResearchTools:
         end = min(action.end_line, action.start_line + MAX_READ_LINES - 1, source.total_lines)
         evidence = self._cite(source, action.start_line, end)
         return {
-            "kind": "read", "path": action.path, "start_line": action.start_line,
-            "end_line": end, "total_lines": source.total_lines, "evidence": evidence,
+            "kind": "read",
+            "path": action.path,
+            "start_line": action.start_line,
+            "end_line": end,
+            "total_lines": source.total_lines,
+            "evidence": evidence,
             "truncated_range": end < action.end_line,
         }
 
     def _candidate_paths(self, query: str, prefix: str = "") -> list[str]:
         paths = [
-            path for path, entry in self.entries.items()
+            path
+            for path, entry in self.entries.items()
             if eligible_path(path) and entry.size <= MAX_FILE_BYTES and path.startswith(prefix)
         ]
         return sorted(paths, key=lambda path: (path not in self.files, *_priority(path, query)))
@@ -325,16 +436,23 @@ class ResearchTools:
             for number, line in enumerate(source_lines(source.text), 1):
                 if query.casefold() in line.casefold():
                     evidence = self._cite(source, number, number)
-                    matches.append({
-                        "path": path, "line": number, "text": line,
-                        "evidence_id": evidence["id"],
-                    })
+                    matches.append(
+                        {
+                            "path": path,
+                            "line": number,
+                            "text": line,
+                            "evidence_id": evidence["id"],
+                        }
+                    )
                     if len(matches) >= MAX_SEARCH_MATCHES:
                         break
             if len(matches) >= MAX_SEARCH_MATCHES:
                 break
         return {
-            "kind": "search", "query": query, "matches": matches, "searched_paths": searched,
+            "kind": "search",
+            "query": query,
+            "matches": matches,
+            "searched_paths": searched,
             "complete": len(searched) == len(candidates) and len(matches) < MAX_SEARCH_MATCHES,
             "warnings": warnings + ["Literal search covers only the listed budget-selected files."],
         }
@@ -358,10 +476,15 @@ class ResearchTools:
         for number, line in enumerate(source_lines(source.text), 1):
             found = pattern.match(line)
             if found:
-                definitions.append({
-                    "name": found[1], "qualified_name": found[1], "kind": "lexical_definition",
-                    "start_line": number, "end_line": number,
-                })
+                definitions.append(
+                    {
+                        "name": found[1],
+                        "qualified_name": found[1],
+                        "kind": "lexical_definition",
+                        "start_line": number,
+                        "end_line": number,
+                    }
+                )
         return definitions, [], [], "lexical_only"
 
     def _symbols(self, action: ToolAction) -> dict[str, Any]:
@@ -369,27 +492,44 @@ class ResearchTools:
         definitions, imports, calls, confidence = self._index(source)
         term = action.symbol or action.query
         matching = [
-            definition for definition in definitions
+            definition
+            for definition in definitions
             if not term or term in definition["qualified_name"]
         ]
         remaining = [item for item in matching if item["start_line"] >= action.start_line]
         selected = remaining[:16]
         evidence_ids = []
-        for definition in selected:
-            evidence = self._cite(source, definition["start_line"], definition["start_line"])
-            definition["evidence_id"] = evidence["id"]
-            evidence_ids.append(evidence["id"])
+        for index, definition in enumerate(selected):
+            evidence = self._goal_cite(
+                source,
+                definition["start_line"],
+                definition["start_line"],
+                limit=6 if term else 4,
+                allow_new=index < (6 if term else 4),
+            )
+            self._attach_citation(definition, evidence, evidence_ids)
+        warnings = ["AST and lexical names do not resolve runtime dispatch or evaluate imports."]
+        if any(item["citation_status"] == "index_only" for item in selected):
+            warnings.append(
+                "Uncited definitions are navigation metadata only. Read or trace a goal-selected "
+                "line range before using them as report evidence."
+            )
         return {
-            "kind": "symbols", "path": source.path, "definitions": selected,
-            "imports": imports[:40], "calls": calls[:60], "evidence_ids": evidence_ids,
+            "kind": "symbols",
+            "path": source.path,
+            "definitions": selected,
+            "imports": imports[:40],
+            "calls": calls[:60],
+            "evidence_ids": list(dict.fromkeys(evidence_ids)),
             "confidence": confidence,
-            "definition_count": len(definitions), "matching_definition_count": len(matching),
+            "definition_count": len(definitions),
+            "matching_definition_count": len(matching),
             "has_more": len(remaining) > len(selected),
             "next_start_line": remaining[16]["start_line"] if len(remaining) > 16 else None,
-            "imports_truncated": len(imports) > 40, "calls_truncated": len(calls) > 60,
-            "warnings": [
-                "AST and lexical names do not resolve runtime dispatch or evaluate imports."
-            ],
+            "imports_truncated": len(imports) > 40,
+            "calls_truncated": len(calls) > 60,
+            "new_citations": self._new_citations,
+            "warnings": warnings,
         }
 
     def _module_candidates(self, source_path: str, imported: dict) -> list[str]:
@@ -399,19 +539,23 @@ class ResearchTools:
             parent_parts = list(PurePosixPath(source_path).parent.parts)
             if level > len(parent_parts) + 1:
                 return []
-            base = "/".join(parent_parts[:len(parent_parts) - level + 1])
+            base = "/".join(parent_parts[: len(parent_parts) - level + 1])
             module = "/".join(part for part in (base, module) if part)
         suffixes = [f"{module}.py", f"{module}/__init__.py"] if module else []
         if imported["name"] not in {"", "*"}:
             child = "/".join(part for part in (module, imported["name"]) if part)
             suffixes += [f"{child}.py", f"{child}/__init__.py"]
-        return sorted({
-            path for path in self.entries if eligible_path(path)
-            and any(
-                path == suffix or (not level and path.endswith("/" + suffix))
-                for suffix in suffixes
-            )
-        })[:6]
+        return sorted(
+            {
+                path
+                for path in self.entries
+                if eligible_path(path)
+                and any(
+                    path == suffix or (not level and path.endswith("/" + suffix))
+                    for suffix in suffixes
+                )
+            }
+        )[:6]
 
     def _trace(self, action: ToolAction) -> dict[str, Any]:
         source = self._load(action.path)
@@ -421,78 +565,150 @@ class ResearchTools:
                 "invalid_symbol", "Tracing requires a function, class or lexical call name."
             )
         definitions, imports, calls, confidence = self._index(source)
-        matching = [
-            definition for definition in definitions
-            if definition["name"] == symbol.split(".")[-1] or definition["qualified_name"] == symbol
-        ]
+        exact = [item for item in definitions if item["qualified_name"] == symbol]
+        matching = exact or [item for item in definitions if item["name"] == symbol.split(".")[-1]]
         selected = matching[:8]
-        names = {definition["qualified_name"] for definition in matching}
-        call_sites = [
-            call for call in calls
-            if call["callee"] == symbol or call["callee"].split(".")[-1] == symbol.split(".")[-1]
+        names = {item["qualified_name"] for item in matching}
+        matched_calls = [
+            call
+            for call in calls
+            if call["callee"] == symbol
+            or call["callee"].split(".")[-1] == symbol.split(".")[-1]
             or call["caller"] in names
             or any(call["caller"].startswith(name + ".") for name in names)
         ]
+        # Include incoming goal calls before sampling a long function's outgoing calls.
+        call_sites = sorted(
+            matched_calls,
+            key=lambda item: (
+                item["callee"].split(".")[-1] != symbol.split(".")[-1],
+                item["start_line"],
+            ),
+        )[:12]
         evidence_ids: list[str] = []
-        for definition in selected:
-            evidence = self._cite(
-                source, definition["start_line"],
+        warnings = [
+            "Call sites are syntax observations, not a resolved runtime call graph.",
+            "Imports identify candidate files; dynamic dispatch and external code "
+            "remain unverified.",
+        ]
+        for index, definition in enumerate(selected):
+            evidence = self._goal_cite(
+                source,
+                definition["start_line"],
                 min(definition["end_line"], definition["start_line"] + 79),
+                limit=8,
+                allow_new=index < 2,
             )
             definition["path"] = source.path
-            definition["evidence_id"] = evidence["id"]
-            evidence_ids.append(evidence["id"])
-        for call in call_sites[:12]:
-            evidence = self._cite(
-                source, call["start_line"], min(call["end_line"], call["start_line"] + 9)
-            )
+            self._attach_citation(definition, evidence, evidence_ids)
+
+        # Nearby calls share one exact snippet instead of consuming a citation per call.
+        groups: list[list[dict]] = []
+        for call in sorted(call_sites, key=lambda item: item["start_line"]):
             call["path"] = source.path
-            call["evidence_id"] = evidence["id"]
-            evidence_ids.append(evidence["id"])
-        candidate_modules = []
-        roots = {call["callee"].split(".")[0] for call in call_sites} | {symbol.split(".")[0]}
-        relevant_imports = [imported for imported in imports if imported["alias"] in roots]
-        for imported in relevant_imports[:12]:
-            candidates = self._module_candidates(source.path, imported)
-            import_evidence = self._cite(
-                source, imported["line"],
-                min(imported["end_line"], imported["line"] + MAX_READ_LINES - 1),
+            if groups and call["start_line"] - groups[-1][0]["start_line"] < MAX_READ_LINES:
+                groups[-1].append(call)
+            else:
+                groups.append([call])
+        groups.sort(
+            key=lambda group: (
+                not any(item["callee"].split(".")[-1] == symbol.split(".")[-1] for item in group),
+                group[0]["start_line"],
             )
-            evidence_ids.append(import_evidence["id"])
-            candidate_modules.append({
-                **imported, "candidate_paths": candidates, "evidence_id": import_evidence["id"],
+        )
+        for index, group in enumerate(groups):
+            first_line = group[0]["start_line"]
+            end_line = min(max(item["end_line"] for item in group), first_line + MAX_READ_LINES - 1)
+            evidence = self._goal_cite(source, first_line, end_line, limit=8, allow_new=index < 2)
+            for call in group:
+                self._attach_citation(call, evidence, evidence_ids)
+                if evidence and call["end_line"] > evidence["end_line"]:
+                    call["citation_partial"] = True
+
+        roots = {call["callee"].split(".")[0] for call in call_sites} | {symbol.split(".")[0]}
+        relevant_imports = [item for item in imports if item["alias"] in roots]
+        candidate_modules = []
+        candidate_citation_index = 0
+        candidate_definitions_truncated = False
+        for import_index, imported in enumerate(relevant_imports[:6]):
+            candidates = self._module_candidates(source.path, imported)
+            import_evidence = self._goal_cite(
+                source,
+                imported["line"],
+                min(imported["end_line"], imported["line"] + MAX_READ_LINES - 1),
+                limit=8,
+                allow_new=import_index < 2,
+            )
+            module = {
+                **imported,
+                "candidate_paths": candidates,
                 "resolution": "path_candidates_only",
-            })
+            }
+            self._attach_citation(module, import_evidence, evidence_ids)
+            candidate_modules.append(module)
+            wanted_names = {imported["name"] or symbol.split(".")[-1]}
+            for call in call_sites:
+                prefix = imported["alias"] + "."
+                if call["callee"].startswith(prefix):
+                    tail = call["callee"][len(prefix) :]
+                    wanted_names.add(tail)
+                    wanted_names.add(tail.split(".")[0])
+                    if imported["name"]:
+                        wanted_names.add(imported["name"] + "." + tail)
             for path in candidates:
                 if self._new_files >= MAX_NEW_FILES_PER_ACTION and path not in self.files:
+                    warnings.append("Cross-file exploration reached this action's file limit.")
                     break
                 try:
                     candidate = self._load(path)
+                    other_definitions, _, _, _ = self._index(candidate)
                 except ToolBudgetExceeded:
-                    break
-                except ToolError:
-                    continue
-                other_definitions, _, _, _ = self._index(candidate)
-                wanted = imported["name"] or symbol.split(".")[-1]
-                for definition in other_definitions:
-                    if definition["name"] != wanted:
-                        continue
-                    evidence = self._cite(
-                        candidate, definition["start_line"], definition["start_line"]
+                    warnings.append(
+                        "Cross-file exploration reached the remaining file/byte budget."
                     )
-                    selected.append({**definition, "path": path, "evidence_id": evidence["id"]})
-                    evidence_ids.append(evidence["id"])
+                    break
+                except ToolError as error:
+                    warnings.append(f"Skipped candidate {path}: {error.code}.")
+                    continue
+                for definition in other_definitions:
+                    if definition["qualified_name"] not in wanted_names:
+                        continue
+                    if len(selected) >= 12:
+                        candidate_definitions_truncated = True
+                        break
+                    evidence = self._goal_cite(
+                        candidate,
+                        definition["start_line"],
+                        definition["start_line"],
+                        limit=8,
+                        allow_new=candidate_citation_index < 2,
+                    )
+                    candidate_citation_index += 1
+                    item = {**definition, "path": path}
+                    self._attach_citation(item, evidence, evidence_ids)
+                    selected.append(item)
+        evidence_limited = any(
+            item.get("citation_status") == "index_only"
+            for item in [*selected, *call_sites, *candidate_modules]
+        )
+        if evidence_limited:
+            warnings.append(
+                "Some relationships are uncited navigation metadata. Read the displayed "
+                "goal-selected ranges before using them as report evidence."
+            )
         return {
-            "kind": "trace", "path": source.path, "symbol": symbol,
-            "definitions": selected[:12], "call_sites": call_sites[:12],
-            "candidate_modules": candidate_modules[:12],
-            "evidence_ids": list(dict.fromkeys(evidence_ids)), "confidence": confidence,
-            "definitions_truncated": len(matching) > 8 or len(selected) > 12,
-            "call_sites_truncated": len(call_sites) > 12,
-            "imports_truncated": len(relevant_imports) > 12,
-            "warnings": [
-                "Call sites are syntax observations, not a resolved runtime call graph.",
-                "Imports identify candidate files; dynamic dispatch and external code "
-                "remain unverified.",
-            ],
+            "kind": "trace",
+            "path": source.path,
+            "symbol": symbol,
+            "definitions": selected,
+            "call_sites": call_sites,
+            "candidate_modules": candidate_modules,
+            "evidence_ids": list(dict.fromkeys(evidence_ids)),
+            "confidence": confidence,
+            "definitions_truncated": len(matching) > 8 or candidate_definitions_truncated,
+            "call_sites_truncated": len(matched_calls) > 12,
+            "imports_truncated": len(relevant_imports) > 6,
+            "new_citations": self._new_citations,
+            "evidence_limited": evidence_limited,
+            "warnings": list(dict.fromkeys(warnings)),
         }

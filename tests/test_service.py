@@ -101,7 +101,7 @@ def test_budget_depth_and_explicit_override_share_graph_defaults():
 
 
 def test_service_rejects_bad_url_before_creating_history(tmp_path):
-    service = ResearchService(Settings(_env_file=None, data_dir=tmp_path))
+    service = ResearchService(Settings(_env_file=None, data_dir=tmp_path, model_mode="mock"))
     try:
         with pytest.raises(GitHubError) as caught:
             service.start(
@@ -114,7 +114,7 @@ def test_service_rejects_bad_url_before_creating_history(tmp_path):
 
 
 def test_only_one_service_can_own_directory_and_history_read_remains_available(tmp_path):
-    settings = Settings(_env_file=None, data_dir=tmp_path)
+    settings = Settings(_env_file=None, data_dir=tmp_path, model_mode="mock")
     first = ResearchService(settings)
     try:
         with pytest.raises(ValueError, match="already owns"):
@@ -129,12 +129,14 @@ def test_only_one_service_can_own_directory_and_history_read_remains_available(t
 def test_bounded_queue_and_cooperative_pause(tmp_path, monkeypatch):
     entered = threading.Event()
     released = threading.Event()
+    invoked_tasks = []
 
     class BlockingRunner:
         def __init__(self, pause):
             self.pause = pause
 
         def run(self, task_id, _request, _budget, **kwargs):
+            invoked_tasks.append(task_id)
             entered.set()
             assert released.wait(10)
             state = {"status": "paused" if self.pause.is_set() else "completed"}
@@ -144,7 +146,9 @@ def test_bounded_queue_and_cooperative_pause(tmp_path, monkeypatch):
         def close(self):
             pass
 
-    service = ResearchService(Settings(_env_file=None, data_dir=tmp_path), max_workers=1)
+    service = ResearchService(
+        Settings(_env_file=None, data_dir=tmp_path, model_mode="mock"), max_workers=1
+    )
     monkeypatch.setattr(service, "_create_runner", BlockingRunner)
     try:
         tasks = [service.start(request()) for _ in range(4)]
@@ -153,13 +157,17 @@ def test_bounded_queue_and_cooperative_pause(tmp_path, monkeypatch):
             service.start(request())
         paused = service.pause(tasks[0]["id"])
         assert paused["pause_requested"] is True
+        service.pause(tasks[1]["id"])
         with pytest.raises(ValueError, match="already queued"):
             service.resume(tasks[0]["id"])
         released.set()
         result = wait_terminal(service, tasks[0]["id"])
         assert result["status"] == "paused"
         assert result["pause_requested"] is False
-        for task in tasks[1:]:
+        assert wait_terminal(service, tasks[1]["id"])["status"] == "paused"
+        assert tasks[1]["id"] not in invoked_tasks
+        assert service.get_task(tasks[1]["id"])["usage"] == {}
+        for task in tasks[2:]:
             assert wait_terminal(service, task["id"])["status"] == "completed"
     finally:
         released.set()
@@ -180,7 +188,7 @@ def test_worker_error_is_sanitized_and_recovery_preserves_saved_budget(tmp_path,
         def close(self):
             pass
 
-    service = ResearchService(Settings(_env_file=None, data_dir=tmp_path))
+    service = ResearchService(Settings(_env_file=None, data_dir=tmp_path, model_mode="mock"))
     monkeypatch.setattr(service, "_create_runner", lambda _pause: FailingRunner())
     # This scheduling test simulates the persisted checkpoint. Real saver
     # existence is exercised by the full LangGraph integration below.
@@ -208,7 +216,7 @@ def test_startup_marks_abandoned_task_interrupted_without_automatic_work(tmp_pat
     store = TaskStore(tmp_path)
     task = store.create(request(), Budget(), "mock")
     store.patch(task["id"], status="running", usage={"llm_calls": 7})
-    service = ResearchService(Settings(_env_file=None, data_dir=tmp_path))
+    service = ResearchService(Settings(_env_file=None, data_dir=tmp_path, model_mode="mock"))
     try:
         assert not service._jobs
         recovered = service.get_task(task["id"])
@@ -221,14 +229,15 @@ def test_startup_marks_abandoned_task_interrupted_without_automatic_work(tmp_pat
         service.close()
 
 
-def test_service_full_langgraph_run_with_mocked_github_and_mock_model(tmp_path):
-    """Real LangGraph/SQLite/tools/reporting, simulated HTTP and model reasoning."""
+@pytest.fixture
+def offline_repository():
+    """One immutable HTTP fixture shared by complete-run and restart tests."""
     commit, tree_sha = "a" * 40, "b" * 40
     source = "def invoke(tool, state):\n    return tool(state)\n"
     raw = source.encode()
     blob_sha = hashlib.sha1(f"blob {len(raw)}\0".encode() + raw).hexdigest()
 
-    def handler(http_request):
+    def response(http_request):
         path = http_request.url.path
         if path == "/repos/example/project":
             return httpx.Response(200, json={"default_branch": "main", "language": "Python"})
@@ -245,11 +254,26 @@ def test_service_full_langgraph_run_with_mocked_github_and_mock_model(tmp_path):
             })
         pytest.fail(f"Unexpected offline GitHub endpoint: {path}")
 
-    def client_factory(**kwargs):
-        return GitHubClient(**kwargs, transport=httpx.MockTransport(handler))
+    def factory(observer=None):
+        def handler(http_request):
+            if observer is not None:
+                observer(http_request)
+            return response(http_request)
+
+        def client_factory(**kwargs):
+            return GitHubClient(**kwargs, transport=httpx.MockTransport(handler))
+
+        return client_factory
+
+    return factory, commit
+
+
+def test_service_full_langgraph_run_with_mocked_github_and_mock_model(tmp_path, offline_repository):
+    """Real LangGraph/SQLite/tools/reporting, simulated HTTP and model reasoning."""
+    factory, commit = offline_repository
 
     service = ResearchService(
-        Settings(_env_file=None, data_dir=tmp_path), client_factory=client_factory
+        Settings(_env_file=None, data_dir=tmp_path, model_mode="mock"), client_factory=factory()
     )
     try:
         task = service.start(request(ref=commit))
@@ -272,10 +296,56 @@ def test_service_full_langgraph_run_with_mocked_github_and_mock_model(tmp_path):
         service.close()
 
 
+def test_service_reopens_and_resumes_real_graph_checkpoint_without_reset(
+    tmp_path, offline_repository
+):
+    """Persisted graph state is recovered by a new service, without fixture state injection."""
+    factory, commit = offline_repository
+    reading, release = threading.Event(), threading.Event()
+
+    def block_first_blob(http_request):
+        if "/git/blobs/" in http_request.url.path:
+            reading.set()
+            assert release.wait(10)
+
+    settings = Settings(_env_file=None, data_dir=tmp_path, model_mode="mock")
+    first = ResearchService(settings, client_factory=factory(block_first_blob))
+    task = first.start(request(ref=commit, budget=Budget(max_iterations=7)))
+    try:
+        assert reading.wait(5), "Actual graph did not begin the fixture source request."
+        first.pause(task["id"])
+        release.set()
+        paused = wait_terminal(first, task["id"])
+        assert paused["status"] == "paused"
+        assert paused["usage"]["api_requests"] > 0
+        assert paused["usage"]["files"] == 1
+        assert paused["evidence"]
+    finally:
+        release.set()
+        first.close()
+
+    second = ResearchService(settings, client_factory=factory())
+    try:
+        assert second.get_task(task["id"])["status"] == "paused"
+        second.resume(task["id"])
+        result = wait_terminal(second, task["id"])
+        assert result["status"] == "completed", result["error"]
+        assert result["budget"] == paused["budget"]
+        assert result["created_at"] == paused["created_at"]
+        assert result["repository"]["commit_sha"] == commit
+        assert result["usage"]["api_requests"] >= paused["usage"]["api_requests"]
+        assert result["usage"]["files"] >= paused["usage"]["files"]
+        assert result["progress"][:len(paused["progress"])] == paused["progress"]
+        assert result["report_markdown"]
+        assert all(evidence["verified"] for evidence in result["evidence"])
+    finally:
+        second.close()
+
+
 def test_cli_list_reads_history_without_interrupting_running_service(tmp_path, capsys):
     from repo_research.cli import main
 
-    service = ResearchService(Settings(_env_file=None, data_dir=tmp_path))
+    service = ResearchService(Settings(_env_file=None, data_dir=tmp_path, model_mode="mock"))
     task = service.store.create(request(), Budget(), "mock")
     service.store.patch(task["id"], status="running")
     try:
@@ -298,8 +368,36 @@ def test_cli_mock_probe_is_explicitly_labelled_and_spends_no_calls(tmp_path, cap
     assert result["usage"]["llm_calls"] == 0
 
 
+@pytest.mark.parametrize("probe_fails", [False, True])
+def test_cli_probe_closes_provider_connection_on_success_or_error(
+    tmp_path, monkeypatch, capsys, probe_fails
+):
+    from repo_research import cli
+    from repo_research.llm import ModelError
+    from repo_research.models import CapabilityReport
+
+    class ProbeConnection:
+        closed = False
+
+        def probe(self):
+            if probe_fails:
+                raise ModelError("Simulated provider failure.")
+            return CapabilityReport(mode="mock", tested=True)
+
+        def close(self):
+            self.closed = True
+
+    connection = ProbeConnection()
+    monkeypatch.setattr(cli, "make_model", lambda *_args: connection)
+    result = cli.main(["probe", "--data-dir", str(tmp_path), "--mode", "mock"])
+    assert result == (1 if probe_fails else 0)
+    assert connection.closed
+    if probe_fails:
+        assert "Simulated provider failure" in capsys.readouterr().err
+
+
 def test_resume_refuses_missing_checkpoint_after_saved_work(tmp_path):
-    service = ResearchService(Settings(_env_file=None, data_dir=tmp_path))
+    service = ResearchService(Settings(_env_file=None, data_dir=tmp_path, model_mode="mock"))
     try:
         task = service.store.create(request(), Budget(), "mock")
         service.store.patch(task["id"], status="interrupted", usage={"llm_calls": 1})

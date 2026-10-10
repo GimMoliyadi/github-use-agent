@@ -5,7 +5,8 @@
 const $ = (id) => document.getElementById(id);
 const state = { config: null, task: null, selected: null, pollTimer: null, token: sessionStorage.getItem("repolens.access") || "", sequence: 0 };
 const statuses = { pending: "等待中", running: "研究中", paused: "已暂停", interrupted: "可恢复", completed: "已完成", failed: "失败" };
-const nodes = { initialize: "固定仓库版本", bootstrap: "初步结构分析", plan: "制定研究计划", decide: "选择探索方向", explore: "探索代码", tools: "读取与检索", organize: "整理证据", review: "判断证据充分性", verify: "验证结论与引用", report: "生成研究报告", finalize: "完成研究" };
+const nodes = { initialize: "固定仓库版本", bootstrap: "初步结构分析", plan: "制定研究计划", decide: "选择探索方向", explore: "探索代码", tools: "读取与检索", organize: "整理证据", review: "判断证据充分性", assess: "检查证据充分性", draft: "生成研究草稿", gate: "保存研究状态", verify: "验证结论与引用", report: "生成研究报告", finalize: "完成研究" };
+const stopReasons = { model_sufficient: "当前证据已足以结束探索", iteration_budget: "达到最大探索迭代预算", api_budget: "达到 GitHub 请求预算", tool_budget: "达到文件、字节或证据读取预算", budget_exhausted: "研究预算耗尽，保留已有证据", repeated_action: "重复已完成的操作，停止以避免循环", no_new_information: "连续探索没有获得新信息" };
 const budgetFields = [
   ["max_iterations", "探索迭代", 1, 40, 1], ["max_files", "读取文件", 1, 80, 1],
   ["max_api_requests", "GitHub 请求", 3, 300, 1], ["max_llm_calls", "模型调用", 0, 60, 1],
@@ -128,8 +129,10 @@ function renderTask(task) {
   }
   $("task-meta").append(element("span", "", `创建于 ${dateLabel(task.created_at)}`));
   $("pause-button").hidden = !["pending", "running"].includes(task.status); $("resume-button").hidden = !["paused", "interrupted"].includes(task.status); $("download-button").hidden = !task.report_markdown;
+  $("pause-button").disabled = !!task.pause_requested;
+  $("pause-button").textContent = task.pause_requested ? "暂停请求已提交" : "暂停研究";
   $("task-error").textContent = task.error || ""; $("task-error").hidden = !task.error;
-  $("stop-reason").textContent = task.stop_reason ? `结束说明：${task.stop_reason}` : "";
+  $("stop-reason").textContent = task.stop_reason ? `结束说明：${stopReasons[task.stop_reason] || task.stop_reason}` : task.pause_requested && ["pending", "running"].includes(task.status) ? "已请求暂停，将在当前步骤结束后保存状态。" : "";
   renderProgress(task.progress || []); renderUsage(task); renderReport(task);
 }
 function renderProgress(progress) {
@@ -184,7 +187,7 @@ async function taskAction(action) {
   const id = state.selected; const button = $(`${action}-button`); button.disabled = true;
   try { const task = await jsonApi(`/api/tasks/${encodeURIComponent(id)}/${action}`, { method: "POST" }); if (state.selected !== id) return; state.task = task; renderTask(task); await loadHistory(); clearTimeout(state.pollTimer); schedulePoll(state.sequence); }
   catch (error) { notice(error.message, true); }
-  finally { button.disabled = false; }
+  finally { button.disabled = action === "pause" && !!state.task?.pause_requested; }
 }
 
 $("research-form").addEventListener("submit", async (event) => {

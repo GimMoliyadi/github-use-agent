@@ -21,7 +21,6 @@ from repo_research.tools import (
     source_lines,
 )
 
-
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -37,7 +36,8 @@ def _safe_text(text: str) -> str:
     # GFM renderers can auto-link bare URLs even after Markdown link escaping.
     text = re.sub(
         r"(?i)\b(https?|ftp|javascript|data|mailto):",
-        lambda match: match[1] + "\u200b:", text,
+        lambda match: match[1] + "\u200b:",
+        text,
     )
     text = re.sub(r"(?i)\bwww\.", "www\u200b.", text)
     return re.sub(r"([\\`*_{}\[\]()#!|>])", r"\\\1", text)
@@ -47,9 +47,17 @@ def _fenced_source(text: str, path: str) -> str:
     longest = max((len(match[0]) for match in re.finditer(r"`+", text)), default=0)
     fence = "`" * max(3, longest + 1)
     languages = {
-        ".py": "python", ".js": "javascript", ".ts": "typescript", ".tsx": "tsx",
-        ".json": "json", ".toml": "toml", ".yaml": "yaml", ".yml": "yaml",
-        ".rs": "rust", ".go": "go", ".sh": "bash",
+        ".py": "python",
+        ".js": "javascript",
+        ".ts": "typescript",
+        ".tsx": "tsx",
+        ".json": "json",
+        ".toml": "toml",
+        ".yaml": "yaml",
+        ".yml": "yaml",
+        ".rs": "rust",
+        ".go": "go",
+        ".sh": "bash",
     }
     language = languages.get(PurePosixPath(path).suffix, "text")
     return f"{fence}{language}\n{text}\n{fence}"
@@ -65,10 +73,7 @@ def verify_evidence(
     """
     verified: list[dict] = []
     warnings: list[str] = []
-    if (
-        not SHA_PATTERN.fullmatch(repo.commit_sha)
-        or repo.full_name != f"{repo.owner}/{repo.name}"
-    ):
+    if not SHA_PATTERN.fullmatch(repo.commit_sha) or repo.full_name != f"{repo.owner}/{repo.name}":
         return [], ["Repository metadata has no valid pinned full commit SHA."]
     raw_items = [item.model_dump() if isinstance(item, Evidence) else item for item in evidence]
     duplicates: dict[str, list[dict]] = defaultdict(list)
@@ -76,7 +81,8 @@ def verify_evidence(
         if isinstance(item, dict) and isinstance(item.get("id"), str):
             duplicates[item["id"]].append(item)
     conflicting_ids = {
-        identifier for identifier, items in duplicates.items()
+        identifier
+        for identifier, items in duplicates.items()
         if any(
             {key: value for key, value in item.items() if key != "verified"}
             != {key: value for key, value in items[0].items() if key != "verified"}
@@ -120,13 +126,17 @@ def verify_evidence(
                 and item.end_line - item.start_line + 1 <= MAX_READ_LINES
             ):
                 raise ValueError("citation line range does not exist or exceeds limit")
-            if item.excerpt != "\n".join(lines[item.start_line - 1:item.end_line]):
+            if item.excerpt != "\n".join(lines[item.start_line - 1 : item.end_line]):
                 raise ValueError("quotation differs from exact source lines")
             canonical_url = evidence_url(repo, item.path, item.start_line, item.end_line)
             if item.url != canonical_url:
                 raise ValueError("URL differs from immutable program-generated permalink")
             expected_id = evidence_identifier(
-                repo.full_name, repo.commit_sha, item.path, item.start_line, item.end_line,
+                repo.full_name,
+                repo.commit_sha,
+                item.path,
+                item.start_line,
+                item.end_line,
                 source.blob_sha,
             )
             if item.id != expected_id:
@@ -152,15 +162,17 @@ def finalize_report(
     model_mode: str,
 ) -> dict[str, Any]:
     """Downgrade unsupported claims and render only validated permanent links."""
-    verified, warnings = verify_evidence(repo, files, evidence) if repo else (
-        [], ["Repository initialization did not complete; no source evidence was verified."]
+    verified, warnings = (
+        verify_evidence(repo, files, evidence)
+        if repo
+        else ([], ["Repository initialization did not complete; no source evidence was verified."])
     )
     by_id = {item["id"]: item for item in verified}
     final = draft.model_copy(deep=True)
     for claim in final.claims:
-        valid_ids = list(dict.fromkeys(
-            identifier for identifier in claim.evidence_ids if identifier in by_id
-        ))
+        valid_ids = list(
+            dict.fromkeys(identifier for identifier in claim.evidence_ids if identifier in by_id)
+        )
         if len(valid_ids) != len(claim.evidence_ids):
             warnings.append("Removed invalid or duplicate evidence references from a report claim.")
         claim.evidence_ids = valid_ids
@@ -178,7 +190,8 @@ def finalize_report(
     limitations = [
         "静态分析不会执行仓库代码；跨文件候选和调用语法不能确认动态分派或运行时行为。",
         f"仅分析已获取的 {len(files)} 个文件；预算内的抽样搜索不代表完整仓库覆盖。",
-        "引用校验确认固定 Commit 下的文件、字节、行号和原文；自然语言结论仍需人工判断证据是否充分。",
+        "引用校验确认固定 Commit 下的文件、字节、行号和原文；"
+        "自然语言结论仍需人工判断证据是否充分。",
     ]
     if model_mode == "mock":
         limitations.append("本报告使用 Mock 模型生成研究决策与草稿；代码证据来自配置的数据源。")
@@ -194,12 +207,17 @@ def finalize_report(
     if repo:
         lines += [
             f"仓库：{_safe_text(repo.full_name)}  ",
-            f"固定 Commit：`{_safe_text(repo.commit_sha)}`", "",
+            f"固定 Commit：`{_safe_text(repo.commit_sha)}`",
+            "",
         ]
     if final.summary:
         lines += [
-            "## 模型摘要（未逐项验证）", "", _safe_text(final.summary), "",
-            "技术结论以以下带来源的发现为准。", "",
+            "## 模型摘要（未逐项验证）",
+            "",
+            _safe_text(final.summary),
+            "",
+            "技术结论以以下带来源的发现为准。",
+            "",
         ]
     sections: dict[str, list] = {}
     for claim in final.claims:
@@ -227,23 +245,33 @@ def finalize_report(
             item = by_id[identifier]
             label = f"{_safe_text(item['path'])}，L{item['start_line']}–L{item['end_line']}"
             lines += [
-                f"### [{label}]({item['url']})", "",
-                f"来源类型：{_safe_text(item['kind'])}；Blob：`{item['blob_sha']}`", "",
-                _fenced_source(item["excerpt"], item["path"]), "",
+                f"### [{label}]({item['url']})",
+                "",
+                f"来源类型：{_safe_text(item['kind'])}；Blob：`{item['blob_sha']}`",
+                "",
+                _fenced_source(item["excerpt"], item["path"]),
+                "",
             ]
     lines += ["## 限制与未确认事项", ""]
     lines += [f"- {_safe_text(limitation)}" for limitation in final.limitations]
     lines += ["", "## 资源使用", ""]
     lines += [
-        f"- 探索轮数：{usage.iterations}；文件：{usage.files}；下载字节：{usage.bytes}。",
-        f"- GitHub 请求：{usage.api_requests}；缓存命中：{usage.cache_hits}；模型调用：{usage.llm_calls}。",
+        f"- 探索轮数：{usage.iterations}；文件：{usage.files}；分析字节：{usage.bytes}。",
+        f"- GitHub 请求：{usage.api_requests}；缓存命中：{usage.cache_hits}；"
+        f"模型调用：{usage.llm_calls}。",
         f"- 模型 Token：输入 {usage.input_tokens}，输出 {usage.output_tokens}。",
-        (f"- 已记录费用：${usage.cost_usd:.6f}。" if usage.cost_known else "- 实际模型费用：未知。"),
+        (
+            f"- 已记录费用：${usage.cost_usd:.6f}。"
+            if usage.cost_known
+            else "- 实际模型费用：未知。"
+        ),
     ]
     if warnings:
         lines += ["", "## 引用与结论校验提示", ""]
         lines += [f"- {_safe_text(warning)}" for warning in dict.fromkeys(warnings)]
     return {
-        "draft": final.model_dump(), "evidence": verified, "markdown": "\n".join(lines) + "\n",
+        "draft": final.model_dump(),
+        "evidence": verified,
+        "markdown": "\n".join(lines) + "\n",
         "warnings": list(dict.fromkeys(warnings)),
     }

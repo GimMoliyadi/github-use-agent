@@ -16,7 +16,6 @@ from repo_research.models import (
 from repo_research.report import finalize_report, verify_evidence
 from repo_research.tools import evidence_identifier, evidence_url
 
-
 SHA = "a" * 40
 SOURCE = "def invoke(tool, state):\n    result = tool(state)\n    return result\n"
 
@@ -32,9 +31,14 @@ BLOB = git_blob_sha(SOURCE)
 @pytest.fixture
 def repo():
     return RepositoryInfo(
-        owner="example", name="agent", full_name="example/agent",
-        url="https://github.com/example/agent", default_branch="main",
-        commit_sha=SHA, tree_sha="c" * 40, language="Python",
+        owner="example",
+        name="agent",
+        full_name="example/agent",
+        url="https://github.com/example/agent",
+        default_branch="main",
+        commit_sha=SHA,
+        tree_sha="c" * 40,
+        language="Python",
     )
 
 
@@ -42,8 +46,11 @@ def repo():
 def files():
     return {
         "src/agent.py": SourceFile(
-            path="src/agent.py", text=SOURCE, blob_sha=BLOB,
-            size=len(SOURCE.encode()), total_lines=3,
+            path="src/agent.py",
+            text=SOURCE,
+            blob_sha=BLOB,
+            size=len(SOURCE.encode()),
+            total_lines=3,
         )
     }
 
@@ -52,9 +59,13 @@ def files():
 def evidence():
     return Evidence(
         id=evidence_identifier("example/agent", SHA, "src/agent.py", 1, 3, BLOB),
-        repository="example/agent", commit_sha=SHA,
-        path="src/agent.py", start_line=1, end_line=3,
-        excerpt=SOURCE.rstrip("\n"), blob_sha=BLOB,
+        repository="example/agent",
+        commit_sha=SHA,
+        path="src/agent.py",
+        start_line=1,
+        end_line=3,
+        excerpt=SOURCE.rstrip("\n"),
+        blob_sha=BLOB,
         url=f"https://github.com/example/agent/blob/{SHA}/src/agent.py#L1-L3",
     )
 
@@ -96,12 +107,22 @@ def test_forged_citations_are_rejected(repo, files, evidence, change):
 
 def test_line_verification_counts_lf_only_and_preserves_exact_crlf_bytes(repo):
     text = "value = 'one\u2028two\vthree\ffour'\r\nnext_value = 2\r\n"
-    file = SourceFile(path="src/lines.py", text=text, blob_sha=git_blob_sha(text),
-                      size=len(text.encode()), total_lines=2)
+    file = SourceFile(
+        path="src/lines.py",
+        text=text,
+        blob_sha=git_blob_sha(text),
+        size=len(text.encode()),
+        total_lines=2,
+    )
     item = Evidence(
         id=evidence_identifier(repo.full_name, SHA, file.path, 2, 2, file.blob_sha),
-        repository=repo.full_name, commit_sha=SHA, path=file.path, start_line=2, end_line=2,
-        excerpt="next_value = 2\r", blob_sha=file.blob_sha,
+        repository=repo.full_name,
+        commit_sha=SHA,
+        path=file.path,
+        start_line=2,
+        end_line=2,
+        excerpt="next_value = 2\r",
+        blob_sha=file.blob_sha,
         url=evidence_url(repo, file.path, 2, 2),
     )
     verified, warnings = verify_evidence(repo, {file.path: file}, [item])
@@ -130,15 +151,17 @@ def test_untrusted_urls_never_survive_verification(repo, files, evidence, url):
 
 def test_unicode_and_spaces_have_commit_pinned_encoded_permalink(repo, evidence):
     path = "src/测试 tool.py"
-    source = SourceFile(path=path, text=SOURCE, blob_sha=BLOB,
-                        size=len(SOURCE.encode()), total_lines=3)
-    canonical = (
-        f"https://github.com/example/agent/blob/{SHA}/{quote(path, safe='/')}#L1-L3"
+    source = SourceFile(
+        path=path, text=SOURCE, blob_sha=BLOB, size=len(SOURCE.encode()), total_lines=3
     )
-    item = evidence.model_copy(update={
-        "path": path, "url": canonical,
-        "id": evidence_identifier("example/agent", SHA, path, 1, 3, BLOB),
-    })
+    canonical = f"https://github.com/example/agent/blob/{SHA}/{quote(path, safe='/')}#L1-L3"
+    item = evidence.model_copy(
+        update={
+            "path": path,
+            "url": canonical,
+            "id": evidence_identifier("example/agent", SHA, path, 1, 3, BLOB),
+        }
+    )
     verified, _ = verify_evidence(repo, {path: source}, [item])
     assert len(verified) == 1
     assert as_dict(verified[0])["url"] == canonical
@@ -152,9 +175,12 @@ def test_evidence_without_loaded_source_is_not_trusted(repo, evidence):
 
 def test_mutated_source_and_excerpt_cannot_bypass_blob_integrity(repo, files, evidence):
     altered = SOURCE.replace("tool(state)", "tool.delete_everything()")
-    files["src/agent.py"] = files["src/agent.py"].model_copy(update={
-        "text": altered, "size": len(altered.encode()),
-    })
+    files["src/agent.py"] = files["src/agent.py"].model_copy(
+        update={
+            "text": altered,
+            "size": len(altered.encode()),
+        }
+    )
     forged = evidence.model_copy(update={"excerpt": altered.rstrip("\n")})
     verified, warnings = verify_evidence(repo, files, [forged])
     assert not verified
@@ -177,16 +203,26 @@ def test_identical_duplicate_citations_are_deduplicated(repo, files, evidence):
 
 def test_claims_missing_valid_evidence_are_marked_unknown(repo, files, evidence):
     draft = ReportDraft(
-        title="Tool execution", summary="Static code research",
+        title="Tool execution",
+        summary="Static code research",
         claims=[
-            DraftClaim(category="fact", text="invoke calls the provided tool",
-                       evidence_ids=[evidence.id]),
+            DraftClaim(
+                category="fact", text="invoke calls the provided tool", evidence_ids=[evidence.id]
+            ),
             DraftClaim(category="fact", text="Memory is persisted to Redis", evidence_ids=["E99"]),
             DraftClaim(category="fact", text="All calls are asynchronous", evidence_ids=[]),
         ],
     )
-    result = finalize_report(draft, repo, files, [evidence], "How are tools called?", Usage(),
-                             "evidence_sufficient", "mock")
+    result = finalize_report(
+        draft,
+        repo,
+        files,
+        [evidence],
+        "How are tools called?",
+        Usage(),
+        "evidence_sufficient",
+        "mock",
+    )
     claims = as_dict(result["draft"])["claims"]
     assert claims[0]["category"] == "fact"
     assert all(claim["category"] == "unknown" for claim in claims[1:])
@@ -199,21 +235,40 @@ def test_claims_missing_valid_evidence_are_marked_unknown(repo, files, evidence)
 def test_documentation_does_not_prove_implementation(repo, evidence):
     text = "# Agent\nThis framework supports durable memory.\n"
     blob = git_blob_sha(text)
-    file = SourceFile(path="README.md", text=text, blob_sha=blob,
-                      size=len(text.encode()), total_lines=2)
-    doc = evidence.model_copy(update={
-        "path": file.path, "start_line": 2, "end_line": 2,
-        "excerpt": text.splitlines()[1], "kind": "documentation",
-        "blob_sha": blob,
-        "url": evidence_url(repo, file.path, 2, 2),
-        "id": evidence_identifier(repo.full_name, SHA, file.path, 2, 2, blob),
-    })
-    draft = ReportDraft(claims=[DraftClaim(
-        category="fact", text="Memory is implemented with durable disk persistence",
-        evidence_ids=[doc.id],
-    )])
-    result = finalize_report(draft, repo, {file.path: file}, [doc], "Explain memory implementation",
-                             Usage(), "budget_exhausted", "mock")
+    file = SourceFile(
+        path="README.md", text=text, blob_sha=blob, size=len(text.encode()), total_lines=2
+    )
+    doc = evidence.model_copy(
+        update={
+            "path": file.path,
+            "start_line": 2,
+            "end_line": 2,
+            "excerpt": text.splitlines()[1],
+            "kind": "documentation",
+            "blob_sha": blob,
+            "url": evidence_url(repo, file.path, 2, 2),
+            "id": evidence_identifier(repo.full_name, SHA, file.path, 2, 2, blob),
+        }
+    )
+    draft = ReportDraft(
+        claims=[
+            DraftClaim(
+                category="fact",
+                text="Memory is implemented with durable disk persistence",
+                evidence_ids=[doc.id],
+            )
+        ]
+    )
+    result = finalize_report(
+        draft,
+        repo,
+        {file.path: file},
+        [doc],
+        "Explain memory implementation",
+        Usage(),
+        "budget_exhausted",
+        "mock",
+    )
     claim = as_dict(result["draft"])["claims"][0]
     assert claim["category"] in {"inference", "unknown"}
     assert result["warnings"]
@@ -221,13 +276,17 @@ def test_documentation_does_not_prove_implementation(repo, evidence):
 
 def test_documentation_cannot_masquerade_as_code_evidence(repo, evidence):
     path = "README.md"
-    file = SourceFile(path=path, text=SOURCE, blob_sha=BLOB,
-                      size=len(SOURCE.encode()), total_lines=3)
-    forged = evidence.model_copy(update={
-        "path": path, "kind": "code",
-        "id": evidence_identifier(repo.full_name, SHA, path, 1, 3, BLOB),
-        "url": evidence_url(repo, path, 1, 3),
-    })
+    file = SourceFile(
+        path=path, text=SOURCE, blob_sha=BLOB, size=len(SOURCE.encode()), total_lines=3
+    )
+    forged = evidence.model_copy(
+        update={
+            "path": path,
+            "kind": "code",
+            "id": evidence_identifier(repo.full_name, SHA, path, 1, 3, BLOB),
+            "url": evidence_url(repo, path, 1, 3),
+        }
+    )
     verified, warnings = verify_evidence(repo, {path: file}, [forged])
     if verified:
         assert as_dict(verified[0])["kind"] == "documentation"
@@ -236,48 +295,94 @@ def test_documentation_cannot_masquerade_as_code_evidence(repo, evidence):
 
 
 def test_report_escapes_untrusted_html_and_markdown_links(repo, files, evidence):
-    hostile = '<img src=x onerror=alert(1)> [click](javascript:alert(1))'
-    draft = ReportDraft(title=hostile, summary=hostile, claims=[DraftClaim(
-        section=hostile, category="fact", text=hostile, evidence_ids=[evidence.id],
-    )], limitations=[hostile])
-    result = finalize_report(draft, repo, files, [evidence], hostile, Usage(),
-                             "budget_exhausted", "mock")
+    hostile = "<img src=x onerror=alert(1)> [click](javascript:alert(1))"
+    draft = ReportDraft(
+        title=hostile,
+        summary=hostile,
+        claims=[
+            DraftClaim(
+                section=hostile,
+                category="fact",
+                text=hostile,
+                evidence_ids=[evidence.id],
+            )
+        ],
+        limitations=[hostile],
+    )
+    result = finalize_report(
+        draft, repo, files, [evidence], hostile, Usage(), "budget_exhausted", "mock"
+    )
     rendered = result["markdown"]
     assert "<img" not in rendered
     assert "[click](javascript:" not in rendered
     assert evidence.url in rendered
 
 
-@pytest.mark.parametrize("url", [
-    "https://evil.example/pretend-proof",
-    "http://evil.example/pretend-proof",
-    "HTTPS://evil.example/pretend-proof",
-])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://evil.example/pretend-proof",
+        "http://evil.example/pretend-proof",
+        "HTTPS://evil.example/pretend-proof",
+    ],
+)
 def test_untrusted_bare_urls_cannot_become_autolinked_citations(repo, files, evidence, url):
-    draft = ReportDraft(title=url, summary=url, claims=[DraftClaim(
-        category="fact", text=f"See {url} for implementation", evidence_ids=[evidence.id],
-    )])
-    result = finalize_report(draft, repo, files, [evidence], url, Usage(),
-                             "evidence_sufficient", "mock")
+    draft = ReportDraft(
+        title=url,
+        summary=url,
+        claims=[
+            DraftClaim(
+                category="fact",
+                text=f"See {url} for implementation",
+                evidence_ids=[evidence.id],
+            )
+        ],
+    )
+    result = finalize_report(
+        draft, repo, files, [evidence], url, Usage(), "evidence_sufficient", "mock"
+    )
     assert url not in result["markdown"]
     assert evidence.url in result["markdown"]
 
 
 def test_repository_backticks_cannot_break_out_of_source_code_fence(repo):
     text = 'payload = """\n```\n<img src=x onerror=alert(1)>\n"""\n'
-    file = SourceFile(path="src/payload.py", text=text, blob_sha=git_blob_sha(text),
-                      size=len(text.encode()), total_lines=4)
+    file = SourceFile(
+        path="src/payload.py",
+        text=text,
+        blob_sha=git_blob_sha(text),
+        size=len(text.encode()),
+        total_lines=4,
+    )
     item = Evidence(
         id=evidence_identifier(repo.full_name, SHA, file.path, 1, 4, file.blob_sha),
-        repository=repo.full_name, commit_sha=SHA, path=file.path, start_line=1, end_line=4,
-        excerpt=text.rstrip("\n"), blob_sha=file.blob_sha,
+        repository=repo.full_name,
+        commit_sha=SHA,
+        path=file.path,
+        start_line=1,
+        end_line=4,
+        excerpt=text.rstrip("\n"),
+        blob_sha=file.blob_sha,
         url=evidence_url(repo, file.path, 1, 4),
     )
-    draft = ReportDraft(claims=[DraftClaim(
-        category="fact", text="The source contains a payload string", evidence_ids=[item.id],
-    )])
-    result = finalize_report(draft, repo, {file.path: file}, [item], "Inspect strings", Usage(),
-                             "evidence_sufficient", "mock")
+    draft = ReportDraft(
+        claims=[
+            DraftClaim(
+                category="fact",
+                text="The source contains a payload string",
+                evidence_ids=[item.id],
+            )
+        ]
+    )
+    result = finalize_report(
+        draft,
+        repo,
+        {file.path: file},
+        [item],
+        "Inspect strings",
+        Usage(),
+        "evidence_sufficient",
+        "mock",
+    )
     assert "````python\n" in result["markdown"]
     assert text.rstrip("\n") + "\n````" in result["markdown"]
-

@@ -1,12 +1,19 @@
+# syntax=docker/dockerfile:1
 FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     MODEL_MODE=mock \
     DATA_DIR=/data
 WORKDIR /app
+COPY requirements.lock ./
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -f /run/secrets/proxy_ca ]; then export PIP_CERT=/run/secrets/proxy_ca; fi; \
+    pip install --no-cache-dir --require-hashes -r requirements.lock
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
-RUN pip install --no-cache-dir .
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -f /run/secrets/proxy_ca ]; then export PIP_CERT=/run/secrets/proxy_ca; fi; \
+    pip install --no-cache-dir --no-deps .
 RUN groupadd --gid 10001 app
 RUN useradd --uid 10001 --gid app --create-home app
 RUN mkdir -p /data
